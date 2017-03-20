@@ -33,7 +33,7 @@ The example runs as follows:
 
 
 
-'''
+```
 I (8700) [PPPOS CLIENT]: AT
 I (9200) [PPPOS CLIENT]: 
 OK
@@ -159,4 +159,4 @@ tls_version = TLS 1.2
 rating = Probably Okay
 I (27000) [HTTPS]: Waiting 30 sec...
 I (27000) [HTTPS]: =================================================================
-'''
+```
