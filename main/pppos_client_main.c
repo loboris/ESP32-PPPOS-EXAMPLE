@@ -46,11 +46,8 @@ uint8_t conn_ok = 0;
    'make menuconfig'.
  */
 #define BUF_SIZE (1024)
-char *PPP_User = CONFIG_GSM_INTERNET_USER;
-char *PPP_Pass = CONFIG_GSM_INTERNET_PASSWORD;
-char *PPP_ApnATReq = "AT+CGDCONT=1,\"IP\",\"" \
-		CONFIG_GSM_APN \
-		"\"\r";
+const char *PPP_User = CONFIG_GSM_INTERNET_USER;
+const char *PPP_Pass = CONFIG_GSM_INTERNET_PASSWORD;
 
 /* UART */
 int uart_num = UART_NUM_1;
@@ -96,8 +93,8 @@ GSM_Cmd GSM_MGR_InitCmds[] =
 		},
 		{
 				//AT+CGDCONT=1,"IP","apn"
-				.cmd = "AT+CGDCONT=1,\"IP\",\"web.htgprs\"\r",
-				.cmdSize = sizeof("AT+CGDCONT=1,\"IP\",\"web.htgprs\"\r")-1,
+				.cmd = "AT+CGDCONT=1,\"IP\",\"myapn\"\r",
+				.cmdSize = sizeof("AT+CGDCONT=1,\"IP\",\"myapn\"\r")-1,
 				.cmdResponseOnOk = GSM_OK_Str,
 				.timeoutMs = 3000,
 		},
@@ -218,6 +215,8 @@ static u32_t ppp_output_callback(ppp_pcb *pcb, u8_t *data, u32_t len, void *ctx)
 static void pppos_client_task()
 {
 	char* data = (char*) malloc(BUF_SIZE);
+	char PPP_ApnATReq[sizeof(CONFIG_GSM_APN)+8];
+	
 	uart_config_t uart_config = {
 			.baud_rate = 115200,
 			.data_bits = UART_DATA_8_BITS,
@@ -231,8 +230,9 @@ static void pppos_client_task()
 	uart_set_pin(uart_num, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 	uart_driver_install(uart_num, BUF_SIZE * 2, BUF_SIZE * 2, 0, NULL, 0);
 
-	//GSM_MGR_InitCmds[3].cmd = PPP_ApnATReq;
-	//GSM_MGR_InitCmds[3].cmdSize = strlen(PPP_ApnATReq)-1;
+	sprintf(PPP_ApnATReq, "AT+CGDCONT=1,\"IP\",\"%s\"\r", CONFIG_GSM_APN);
+	GSM_MGR_InitCmds[3].cmd = PPP_ApnATReq;
+	GSM_MGR_InitCmds[3].cmdSize = strlen(PPP_ApnATReq);
 
 	uint8_t init_ok = 1;
 	while(1)
