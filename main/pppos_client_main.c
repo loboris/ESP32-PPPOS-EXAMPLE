@@ -46,9 +46,9 @@ uint8_t conn_ok = 0;
    'make menuconfig'.
  */
 #define BUF_SIZE (1024)
-const char *PPP_User = CONFIG_GSM_INTERNET_USER;
-const char *PPP_Pass = CONFIG_GSM_INTERNET_PASSWORD;
-const char *PPP_ApnATReq = "AT+CGDCONT=1,\"IP\",\"" \
+char *PPP_User = CONFIG_GSM_INTERNET_USER;
+char *PPP_Pass = CONFIG_GSM_INTERNET_PASSWORD;
+char *PPP_ApnATReq = "AT+CGDCONT=1,\"IP\",\"" \
 		CONFIG_GSM_APN \
 		"\"";
 
@@ -98,8 +98,6 @@ GSM_Cmd GSM_MGR_InitCmds[] =
 				//AT+CGDCONT=1,"IP","apn"
 				.cmd = "AT+CGDCONT=1,\"IP\",\"web.htgprs\"\r",
 				.cmdSize = sizeof("AT+CGDCONT=1,\"IP\",\"web.htgprs\"\r")-1,
-				//.cmd = PPP_ApnATReq,
-				//.cmdSize = strlen(PPP_ApnATReq),
 				.cmdResponseOnOk = GSM_OK_Str,
 				.timeoutMs = 3000,
 		},
@@ -232,6 +230,9 @@ static void pppos_client_task()
 	//Set UART1 pins(TX: I17, RX: I16, RTS: IO18, CTS: IO23)
 	uart_set_pin(uart_num, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 	uart_driver_install(uart_num, BUF_SIZE * 2, BUF_SIZE * 2, 0, NULL, 0);
+
+	GSM_MGR_InitCmds[3].cmd = PPP_ApnATReq;
+	GSM_MGR_InitCmds[3].cmdSize = strlen(PPP_ApnATReq);
 
 	uint8_t init_ok = 1;
 	while(1)
