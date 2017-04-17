@@ -20,6 +20,7 @@
 #include "driver/uart.h"
 
 #include "netif/ppp/pppos.h"
+#include "netif/ppp/ppp.h"
 #include "lwip/err.h"
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
