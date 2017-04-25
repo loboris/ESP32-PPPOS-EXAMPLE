@@ -50,6 +50,7 @@ QueueHandle_t http_mutex;
    'make menuconfig'.
  */
 #define BUF_SIZE (1024)
+// *** If not using hw flow control, set it to 38400
 #define UART_BDRATE 115200
 #define GSM_OK_Str "OK"
 
@@ -159,13 +160,13 @@ static void ppp_status_cb(ppp_pcb *pcb, int err_code, void *ctx) {
 	case PPPERR_NONE: {
 		ESP_LOGI(TAG,"status_cb: Connected\n");
 #if PPP_IPV4_SUPPORT
-		ESP_LOGI(TAG,"   our_ipaddr  = %s\n", ipaddr_ntoa(&pppif->ip_addr));
-		ESP_LOGI(TAG,"   his_ipaddr  = %s\n", ipaddr_ntoa(&pppif->gw));
-		ESP_LOGI(TAG,"   netmask     = %s\n", ipaddr_ntoa(&pppif->netmask));
+		ESP_LOGI(TAG,"   ipaddr    = %s\n", ipaddr_ntoa(&pppif->ip_addr));
+		ESP_LOGI(TAG,"   gateway   = %s\n", ipaddr_ntoa(&pppif->gw));
+		ESP_LOGI(TAG,"   netmask   = %s\n", ipaddr_ntoa(&pppif->netmask));
 #endif
 
 #if PPP_IPV6_SUPPORT
-		ESP_LOGI(TAG,"   our6_ipaddr = %s\n", ip6addr_ntoa(netif_ip6_addr(pppif, 0)));
+		ESP_LOGI(TAG,"   ip6addr   = %s\n", ip6addr_ntoa(netif_ip6_addr(pppif, 0)));
 #endif
 		conn_ok = 1;
 		break;
