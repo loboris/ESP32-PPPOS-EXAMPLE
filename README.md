@@ -1,7 +1,8 @@
 ### PPP over Serial (PPPoS) client example
 
-**As of Ap 24. 2017 PPPoS suppot is included in esp-idf**
-No patches ae necessay.
+**As of Apr 24. 2017 PPPoS support is included in esp-idf**
+
+No patches are necessary.
 
 
 Before you run this example, make sure your GSM is powered on, in command mode, registered to network and connected to your ESP32 UART on pins defined in source file (hw flow controll is not used). 
