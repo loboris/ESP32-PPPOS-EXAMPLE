@@ -551,7 +551,7 @@ static void https_get_task(void *pvParameters)
     ESP_LOGI(HTTPS_TAG, "Setting hostname for TLS session...");
 
     // Hostname set here should match CN in server certificate
-    if((ret = mbedtls_ssl_set_hostname(&ssl, WEB_SERVER)) != 0)
+    if((ret = mbedtls_ssl_set_hostname(&ssl, SSL_WEB_SERVER)) != 0)
     {
         ESP_LOGE(HTTPS_TAG, "mbedtls_ssl_set_hostname returned -0x%x", -ret);
         abort();
