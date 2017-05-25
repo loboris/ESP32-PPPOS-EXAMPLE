@@ -257,9 +257,9 @@ static void pppos_client_task()
 	int pass = 0;
 	char sresp[256] = {'\0'};
 
-	gpio_set_direction(21, GPIO_MODE_OUTPUT);
-    gpio_set_direction(32, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(32, GPIO_PULLUP_ONLY);
+    gpio_set_direction(UART_GPIO_TX, GPIO_MODE_OUTPUT);
+    gpio_set_direction(UART_GPIO_RX, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(UART_GPIO_RX, GPIO_PULLUP_ONLY);
 
     char* data = (char*) malloc(BUF_SIZE);
 	char PPP_ApnATReq[sizeof(CONFIG_GSM_APN)+8];
