@@ -257,9 +257,9 @@ static void pppos_client_task()
 	int pass = 0;
 	char sresp[256] = {'\0'};
 
-	gpio_set_direction(21, GPIO_MODE_OUTPUT);
-    gpio_set_direction(32, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(32, GPIO_PULLUP_ONLY);
+    gpio_set_direction(UART_GPIO_TX, GPIO_MODE_OUTPUT);
+    gpio_set_direction(UART_GPIO_RX, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(UART_GPIO_RX, GPIO_PULLUP_ONLY);
 
     char* data = (char*) malloc(BUF_SIZE);
 	char PPP_ApnATReq[sizeof(CONFIG_GSM_APN)+8];
@@ -551,7 +551,7 @@ static void https_get_task(void *pvParameters)
     ESP_LOGI(HTTPS_TAG, "Setting hostname for TLS session...");
 
     // Hostname set here should match CN in server certificate
-    if((ret = mbedtls_ssl_set_hostname(&ssl, WEB_SERVER)) != 0)
+    if((ret = mbedtls_ssl_set_hostname(&ssl, SSL_WEB_SERVER)) != 0)
     {
         ESP_LOGE(HTTPS_TAG, "mbedtls_ssl_set_hostname returned -0x%x", -ret);
         abort();
