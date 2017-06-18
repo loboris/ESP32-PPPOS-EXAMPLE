@@ -1,5 +1,31 @@
 menu "GSM configuration"
 
+config GSM_DEBUG
+    bool "Enable GSM debugging"
+    default n
+    help
+        Show GSM debug messages
+
+config GSM_TX
+    int "UART Output to GSM Module"
+    default 21
+    range 1 30
+    help
+	UART Tx pin, connected to GSM Module Rx pin.
+
+config GSM_RX
+    int "UART Input from GSM Module"
+    default 31
+    range 1 38
+    help
+	UART Rx pin, connected to GSM Module Tx pin.
+
+config GSM_BDRATE
+    int "UART Baud rate"
+    default 115200
+    help
+	UART baudrate to comunicate with GSM module
+
 config GSM_INTERNET_USER
     string "Internet User"
 	default ""
@@ -14,8 +40,30 @@ config GSM_INTERNET_PASSWORD
 		
 config GSM_APN
     string "Internet APN"
-    default "playmetric"
+    default "providerAPN"
     help
        APN from network provider for internet access
+
+config GSM_SEND_SMS
+    bool "Send SMS message"
+    default n
+    help
+        Send SMS messages during example run
+
+config GSM_SMS_NUMBER
+    string "SMS number"
+   	depends on GSM_SEND_SMS
+    default "+1998765432"
+    help
+       SMS number for sending messages
+       Enter the number in international format (+123999876543)
+
+config GSM_SMS_INTERVAL
+    int "SMS message interval"
+   	depends on GSM_SEND_SMS
+    default 300000
+    range 180000 3600000
+    help
+	Set SMS message interval in mili seconds
 
 endmenu

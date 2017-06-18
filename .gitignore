@@ -17,6 +17,15 @@ GPATH
 .#*
 \#*#
 
+sdkconfig
+sdkconfig.old
+sdkconfig.lobo
+.cproject
+.project
+BUILD
+
+.settings/
+
 build/
 temp/
 *.dis
