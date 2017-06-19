@@ -1,8 +1,8 @@
-menu "GSM configuration"
+menu "GSM PPPoS configuration"
 
 config GSM_DEBUG
     bool "Enable GSM debugging"
-    default n
+    default y
     help
         Show GSM debug messages
 
@@ -42,7 +42,7 @@ config GSM_APN
     string "Internet APN"
     default "providerAPN"
     help
-       APN from network provider for internet access
+       Network provider's APN for internet access
 
 config GSM_SEND_SMS
     bool "Send SMS message"

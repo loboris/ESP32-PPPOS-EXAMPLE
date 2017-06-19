@@ -8,6 +8,8 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
  */
+
+
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -45,26 +47,29 @@
 
 #include "libGSM.h"
 
+
+#define EXAMPLE_TASK_PAUSE	300		// pause between task runs in seconds
+#define TASK_SEMAPHORE_WAIT 140000	// time to wait for mutex in miliseconds
+
 QueueHandle_t http_mutex;
-#define HTTP_SEMAPHORE_WAIT 120000
 
 static const char *TIME_TAG = "[SNTP]";
+static const char *HTTP_TAG = "[HTTP]";
+static const char *HTTPS_TAG = "[HTTPS]";
+static const char *SMS_TAG = "[SMS]";
 
 // ===============================================================================================
-// ==== Http/Https get request ===================================================================
+// ==== Http/Https get requests ==================================================================
 // ===============================================================================================
 
 // Constants that aren't configurable in menuconfig
 #define WEB_SERVER "loboris.eu"
 #define WEB_PORT 80
 #define WEB_URL "http://loboris.eu/ESP32/info.txt"
+
 #define SSL_WEB_SERVER "www.howsmyssl.com"
 #define SSL_WEB_PORT "443"
 #define SSL_WEB_URL "https://www.howsmyssl.com/a/check"
-
-static const char *HTTP_TAG = "[HTTP]";
-static const char *HTTPS_TAG = "[HTTPS]";
-static const char *SMS_TAG = "[SMS]";
 
 static const char *REQUEST = "GET " WEB_URL " HTTP/1.1\n"
     "Host: "WEB_SERVER"\n"
@@ -123,31 +128,29 @@ static void parse_object(cJSON *item)
 	}
 }
 
-//--------------------------------------------
+//============================================
 static void https_get_task(void *pvParameters)
 {
-	while (is_pppConnected() != 1) {
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-    char buf[512];
+	if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+		ESP_LOGE(HTTPS_TAG, "*** ERROR: CANNOT GET MUTEX ***n");
+		while (1) {
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+		}
+	}
+
+	char buf[512];
     char *buffer;
     int ret, flags, len, rlen=0, totlen=0;
 
 	buffer = malloc(8192);
 	if (!buffer) {
-		ESP_LOGI(HTTPS_TAG, "*** ERROR allocating receive buffer ***");
+		xSemaphoreGive(http_mutex);
+		ESP_LOGE(HTTPS_TAG, "*** ERROR allocating receive buffer ***");
 		while (1) {
             vTaskDelay(10000 / portTICK_PERIOD_MS);
 		}
 	}
 	
-	if (!(xSemaphoreTake(http_mutex, HTTP_SEMAPHORE_WAIT))) {
-		ESP_LOGI(HTTPS_TAG, "*** ERROR: CANNOT GET MUTEX ***n");
-		while (1) {
-            vTaskDelay(10000 / portTICK_PERIOD_MS);
-		}
-	}
-
 	mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_ssl_context ssl;
@@ -167,7 +170,10 @@ static void https_get_task(void *pvParameters)
                                     NULL, 0)) != 0)
     {
         ESP_LOGE(HTTPS_TAG, "mbedtls_ctr_drbg_seed returned %d", ret);
-        abort();
+		xSemaphoreGive(http_mutex);
+		while (1) {
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+		}
     }
 
     ESP_LOGI(HTTPS_TAG, "Loading the CA root certificate...");
@@ -178,16 +184,22 @@ static void https_get_task(void *pvParameters)
     if(ret < 0)
     {
         ESP_LOGE(HTTPS_TAG, "mbedtls_x509_crt_parse returned -0x%x\n\n", -ret);
-        abort();
+		xSemaphoreGive(http_mutex);
+		while (1) {
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+		}
     }
 
     ESP_LOGI(HTTPS_TAG, "Setting hostname for TLS session...");
 
-    // Hostname set here should match CN in server certificate
+    // Host name set here should match CN in server certificate
     if((ret = mbedtls_ssl_set_hostname(&ssl, WEB_SERVER)) != 0)
     {
         ESP_LOGE(HTTPS_TAG, "mbedtls_ssl_set_hostname returned -0x%x", -ret);
-        abort();
+		xSemaphoreGive(http_mutex);
+		while (1) {
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+		}
     }
 
     ESP_LOGI(HTTPS_TAG, "Setting up the SSL/TLS structure...");
@@ -216,20 +228,19 @@ static void https_get_task(void *pvParameters)
         ESP_LOGE(HTTPS_TAG, "mbedtls_ssl_setup returned -0x%x\n\n", -ret);
         goto exit;
     }
-	xSemaphoreGive(http_mutex);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    goto start;
 
     while(1) {
-		while (is_pppConnected() != 1) {
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-        }
-
-		if (!(xSemaphoreTake(http_mutex, HTTP_SEMAPHORE_WAIT))) {
-			ESP_LOGI(HTTPS_TAG, "===== ERROR: CANNOT GET MUTEX ===================================\n");
+		if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+			ESP_LOGE(HTTPS_TAG, "===== ERROR: CANNOT GET MUTEX ===================================\n");
             vTaskDelay(30000 / portTICK_PERIOD_MS);
 			continue;
 		}
-		
+start:
+        // ** We must be connected to Internet
+        if (ppposInit() == 0) goto finished;
+
         ESP_LOGI(HTTPS_TAG, "===== HTTPS GET REQUEST =========================================\n");
 
         mbedtls_net_init(&server_fd);
@@ -354,21 +365,28 @@ static void https_get_task(void *pvParameters)
 			}
 		}
 
-        ESP_LOGI(HTTPS_TAG, "Waiting 120 sec...");
+		// We can disconnect from Internet now and turn off RF to save power
+		ppposDisconnect(0, 1);
+
+finished:
+        ESP_LOGI(HTTPS_TAG, "Waiting %d sec...", EXAMPLE_TASK_PAUSE);
         ESP_LOGI(HTTPS_TAG, "=================================================================\n\n");
 		xSemaphoreGive(http_mutex);
-        for(int countdown = 120; countdown >= 0; countdown--) {
+        for(int countdown = EXAMPLE_TASK_PAUSE; countdown >= 0; countdown--) {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
 }
 
 
-//-------------------------------------------
+//===========================================
 static void http_get_task(void *pvParameters)
 {
-	while (is_pppConnected() != 1) {
-		vTaskDelay(100 / portTICK_RATE_MS);
+	if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+		ESP_LOGE(HTTP_TAG, "*** ERROR: CANNOT GET MUTEX ***n");
+		while (1) {
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+		}
 	}
 
 	const struct addrinfo hints = {
@@ -384,22 +402,24 @@ static void http_get_task(void *pvParameters)
 
 	buffer = malloc(2048);
 	if (!buffer) {
-		ESP_LOGI(HTTPS_TAG, "*** ERROR allocating receive buffer ***");
+		ESP_LOGE(HTTPS_TAG, "*** ERROR allocating receive buffer ***");
+		xSemaphoreGive(http_mutex);
 		while (1) {
             vTaskDelay(10000 / portTICK_PERIOD_MS);
 		}
 	}
 
-    while(1) {
-		while (is_pppConnected() != 1) {
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-        }
+	goto start;
 
-        if (!(xSemaphoreTake(http_mutex, HTTP_SEMAPHORE_WAIT))) {
-			ESP_LOGI(HTTP_TAG, "===== ERROR: CANNOT GET MUTEX ==================================\n");
+    while(1) {
+        if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+			ESP_LOGE(HTTP_TAG, "===== ERROR: CANNOT GET MUTEX ==================================\n");
             vTaskDelay(30000 / portTICK_PERIOD_MS);
 			continue;
 		}
+start:
+        // ** We must be connected to Internet
+        if (ppposInit() == 0) goto finished;
 
 		ESP_LOGI(HTTP_TAG, "===== HTTP GET REQUEST =========================================\n");
 
@@ -477,44 +497,61 @@ static void http_get_task(void *pvParameters)
 		}
         ESP_LOGI(HTTP_TAG, "... done reading from socket. %d bytes read, %d in buffer, errno=%d\r\n", totlen, rlen, errno);
         close(s);
-        ESP_LOGI(HTTP_TAG, "Waiting 120 sec...");
+
+        // We can disconnect from Internet now and turn off RF to save power
+		ppposDisconnect(0, 1);
+
+finished:
+        ESP_LOGI(HTTP_TAG, "Waiting %d sec...", EXAMPLE_TASK_PAUSE);
         ESP_LOGI(HTTP_TAG, "================================================================\n\n");
 		xSemaphoreGive(http_mutex);
-        for(int countdown = 120; countdown >= 0; countdown--) {
+        for(int countdown = EXAMPLE_TASK_PAUSE; countdown >= 0; countdown--) {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
 }
 
-//--------------------------------------
+//======================================
 static void sms_task(void *pvParameters)
 {
+	if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+		ESP_LOGE(SMS_TAG, "*** ERROR: CANNOT GET MUTEX ***n");
+		while (1) {
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+		}
+	}
+
 	SMS_Messages messages;
 	uint32_t sms_time = 0;
+	char buf[160];
+
+	goto start;
 
 	while(1) {
-        if (!(xSemaphoreTake(http_mutex, HTTP_SEMAPHORE_WAIT))) {
-			ESP_LOGI(SMS_TAG, "===== ERROR: CANNOT GET MUTEX ==================================\n");
+        if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+			ESP_LOGE(SMS_TAG, "===== ERROR: CANNOT GET MUTEX ==================================\n");
             vTaskDelay(30000 / portTICK_PERIOD_MS);
 			continue;
 		}
-
+start:
 		ESP_LOGI(SMS_TAG, "===== SMS TEST =================================================\n");
 
+		// ** For SMS operations we have to off line **
 		ppposDisconnect(0, 0);
+		gsm_RFOn();  // Turn on RF if it was turned off
 		vTaskDelay(2000 / portTICK_RATE_MS);
 
-#ifdef CONFIG_GSM_SEND_SMS
-		if ((clock() - sms_time) > CONFIG_GSM_SMS_INTERVAL) {
+		#ifdef CONFIG_GSM_SEND_SMS
+		if (clock() > sms_time) {
 			if (smsSend(CONFIG_GSM_SMS_NUMBER, "Hi from ESP32 via GSM\rThis is the test message.") == 1) {
 				printf("SMS sent successfully\r\n");
 			}
 			else {
 				printf("SMS send failed\r\n");
 			}
-			sms_time = clock();
+			sms_time = clock() + CONFIG_GSM_SMS_INTERVAL; // next sms send time
 		}
-#endif
+		#endif
 
 		smsRead(&messages, -1);
 		if (messages.nmsg) {
@@ -528,7 +565,24 @@ static void sms_task(void *pvParameters)
 				printf("Message #%d: idx=%d, from: %s, status: %s, time: %s, tz=GMT+%d, timestamp: %s\r\n",
 						i+1, msg->idx, msg->from, msg->stat, msg->time, msg->tz, asctime(timeinfo));
 				printf("Text: [\r\n%s\r\n]\r\n\r\n", msg->msg);
-				if (msg->msg) free(msg->msg); // Free allocated message text buffer
+
+				// Check if SMS text contains known command
+				if (strstr(msg->msg, "Esp32 info") == msg->msg) {
+					char buffer[80];
+					time_t rawtime;
+					time(&rawtime);
+					timeinfo = localtime( &rawtime );
+					strftime(buffer,80,"%x %H:%M:%S", timeinfo);
+					sprintf(buf, "Hi, %s\rMy time is now\r%s", msg->from, buffer);
+					if (smsSend(CONFIG_GSM_SMS_NUMBER, buf) == 1) {
+						printf("Response sent successfully\r\n");
+					}
+					else {
+						printf("Response send failed\r\n");
+					}
+				}
+				// Free allocated message text buffer
+				if (msg->msg) free(msg->msg);
 				if ((i+1) == messages.nmsg) {
 					printf("Delete message at index %d\r\n", msg->idx);
 					if (smsDelete(msg->idx) == 0) printf("Delete ERROR\r\n");
@@ -539,17 +593,22 @@ static void sms_task(void *pvParameters)
 		}
 		else printf("\r\nNo messages\r\n");
 
-        ppposInit();
+		// ** We can turn off GSM RF to save power
+		gsm_RFOff();
+		// ** We can now go back on line, or stay off line **
+        //ppposInit();
 
-        ESP_LOGI(SMS_TAG, "Waiting 120 sec...");
+        ESP_LOGI(SMS_TAG, "Waiting %d sec...", EXAMPLE_TASK_PAUSE);
         ESP_LOGI(SMS_TAG, "================================================================\n\n");
 
         xSemaphoreGive(http_mutex);
-        for(int countdown = 120; countdown >= 0; countdown--) {
+        for(int countdown = EXAMPLE_TASK_PAUSE; countdown >= 0; countdown--) {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
 }
+
+
 
 //=============
 void app_main()
@@ -557,13 +616,13 @@ void app_main()
 	http_mutex = xSemaphoreCreateMutex();
 
 	if (ppposInit() == 0) {
-		ESP_LOGE("PPPoS EXAMPLE", "ERROR: GSM not initialized.");
+		ESP_LOGE("PPPoS EXAMPLE", "ERROR: GSM not initialized, HALTED");
 		while (1) {
 			vTaskDelay(1000 / portTICK_RATE_MS);
 		}
 	}
 
-	// wait for time to be set
+	// Get time from NTP server
 	time_t now = 0;
 	struct tm timeinfo = { 0 };
 	int retry = 0;
@@ -573,6 +632,7 @@ void app_main()
 	localtime_r(&now, &timeinfo);
 
 	while (1) {
+		printf("\r\n");
 		ESP_LOGI(TIME_TAG,"OBTAINING TIME");
 	    ESP_LOGI(TIME_TAG, "Initializing SNTP");
 	    sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -582,17 +642,19 @@ void app_main()
 
 		// wait for time to be set
 		now = 0;
-		while(timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
+		while ((timeinfo.tm_year < (2016 - 1900)) && (++retry < retry_count)) {
 			ESP_LOGI(TIME_TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
 			vTaskDelay(2000 / portTICK_PERIOD_MS);
 			time(&now);
 			localtime_r(&now, &timeinfo);
-			if (is_pppConnected() != 1) break;
+			if (ppposStatus() != GSM_STATE_CONNECTED) break;
 		}
-		if (is_pppConnected() != 1) {
+		if (ppposStatus() != GSM_STATE_CONNECTED) {
 			sntp_stop();
-			while (is_pppConnected() != 1) {
-				vTaskDelay(10 / portTICK_RATE_MS);
+			ESP_LOGE(TIME_TAG, "Disconnected, waiting for reconnect");
+			retry = 0;
+			while (ppposStatus() != GSM_STATE_CONNECTED) {
+				vTaskDelay(100 / portTICK_RATE_MS);
 			}
 			continue;
 		}
@@ -605,13 +667,12 @@ void app_main()
 			ESP_LOGI(TIME_TAG, "ERROR OBTAINING TIME\n");
 		}
 		sntp_stop();
-		vTaskDelay(30000 / portTICK_PERIOD_MS);
+		break;
 	}
 
+	// Create tasks
     xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
-	vTaskDelay(5000 / portTICK_RATE_MS);
     xTaskCreate(&https_get_task, "https_get_task", 16384, NULL, 4, NULL);
-	vTaskDelay(5000 / portTICK_RATE_MS);
     xTaskCreate(&sms_task, "sms_task", 4096, NULL, 3, NULL);
 
 	while(1)

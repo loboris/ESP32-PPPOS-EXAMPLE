@@ -2,81 +2,145 @@
 
 **As of Apr 24. 2017 PPPoS support is included in esp-idf**
 
-No patches are necessary.
+---
 
+**Includes GSM library** *libGSM* **which handles all GSM and PPPoS operations***
 
-Before you run this example, make sure your GSM is powered on, in command mode, registered to network and connected to your ESP32 UART on pins defined in source file (hw flow controll is not used). 
+See *libGSM.h* for functions usage detailes.
 
-The example runs as follows:
+---
 
-1. Creates the pppos client task which initializes modem on UART port and handles lwip interaction
+#### How to build
+
+Configure your esp32 build environment as for other **esp-idf examples**
+
+Clone the repository
+
+`git clone https://github.com/loboris/ESP32-PPPOS-EXAMPLE.git`
+
+Execute menuconfig and configure your Serial flash config and other settings. Included *sdkconfig.defaults* sets some defaults to be used.
+
+Navigate to **GSM PPPoS configuration** and set GSM and example parameters:
+
+* **GSM_DEBUG** if set GSM AT commands and responses are printed
+* **GSM_TX** UART Tx pin, connected to GSM Module Rx pin.
+* **GSM_RX** UART Rx pin, connected to GSM Module Tx pin.
+* **GSM_BDRATE** UART baudrate to comunicate with GSM module
+* **GSM_INTERNET_USER** Network provider internet user.
+* **GSM_INTERNET_PASSWORD** Network provider internet password
+* **GSM_APN** Network provider's APN for internet access
+* **GSM_SEND_SMS** if set SMS messages will be sent during example run
+* **GSM_SMS_NUMBER** SMS number for sending messages, enter the number in international format (+123999876543)
+* **GSM_SMS_INTERVAL** Set SMS message interval in miliseconds
+
+`make menuconfig`
+
+Make and flash the example.
+
+`make all && make flash`
+
+---
+
+Power your GSM module with good power supply, using LiPo battery is recommended.
+
+In this example **hw flow controll** is not used. With 2G (GPRS) module it is not needed.
+If using higher speed 3G module, using hw flow controll is recomended. You can configure it in *libGSM.c*
+
+---
+
+#### The example runs as follows:
+
+1. Creates the **pppos client task** which initializes modem on UART port and handles lwip interaction
 2. When connection to the Internet is established, gets the current time using SNTP protocol
-3. Creates http and https tasks synchronized with mutex
-4. HTTP task gets text file from server and displays the header and data
-5. HTTPS task gets ssl info from server and displays the header and received JSON data with info about used SSL
-6. HTTP/HTTPS tasks repeats operation every 30 seconds
+3. Creates **http**, **https** and **sms** tasks synchronized with mutex
+4. **HTTP task** gets text file from server and displays the header and data
+5. **HTTPS task** gets ssl info from server and displays the header and received JSON data with info about used SSL
+6. **SMS task** sends SMS messages after defined interval has passed, checks and displays received messages. If received messages starts with **Esp32 info** sends the response message to senders number.
+7. The tasks repeats operation after interval defined in *pppos_client_main.c*
 
 
 #### Tested with GSM SIM800L, should also work with other SIMCOM & Telit GSM modules.
 
 
+**Example output:**
 
 ```
-I (8700) [PPPOS CLIENT]: AT
-I (9200) [PPPOS CLIENT]: 
-OK
+I (0) cpu_start: App cpu up.
+I (1121) heap_alloc_caps: Initializing. RAM available for dynamic allocation:
+I (1143) heap_alloc_caps: At 3FFAE2A0 len 00001D60 (7 KiB): DRAM
+I (1164) heap_alloc_caps: At 3FFB6F28 len 000290D8 (164 KiB): DRAM
+I (1185) heap_alloc_caps: At 3FFE0440 len 00003BC0 (14 KiB): D/IRAM
+I (1206) heap_alloc_caps: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM
+I (1228) heap_alloc_caps: At 40092D0C len 0000D2F4 (52 KiB): IRAM
+I (1249) cpu_start: Pro cpu start user code
+I (1304) cpu_start: Starting scheduler on PRO CPU.
+I (197) cpu_start: Starting scheduler on APP CPU.
+I (297) [PPPOS CLIENT]: AT COMMAND: [AT..]
+I (317) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (417) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=4..]
+I (437) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (437) [PPPOS CLIENT]: GSM initialization start
+I (1037) [PPPOS CLIENT]: AT COMMAND: [AT..]
+I (1057) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (1157) [PPPOS CLIENT]: AT COMMAND: [ATZ..]
+I (1177) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (1277) [PPPOS CLIENT]: AT COMMAND: [ATE0..]
+I (1297) [PPPOS CLIENT]: AT RESPONSE: [ATE0...OK..]
+I (1397) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=1..]
+I (1417) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (2517) [PPPOS CLIENT]: AT COMMAND: [AT+CNMI=0,0,0,0,0..]
+I (2537) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (2637) [PPPOS CLIENT]: AT COMMAND: [AT+CPIN?..]
+I (2657) [PPPOS CLIENT]: AT RESPONSE: [..+CPIN: READY....OK..]
+I (2757) [PPPOS CLIENT]: AT COMMAND: [AT+CREG?..]
+I (2777) [PPPOS CLIENT]: AT BAD RESPONSE: [..+CREG: 0,2....OK..]
+W (2777) [PPPOS CLIENT]: Wrong response, restarting...
+I (5777) [PPPOS CLIENT]: Skip command: [AT..]
+I (5777) [PPPOS CLIENT]: Skip command: [ATZ..]
+I (5777) [PPPOS CLIENT]: Skip command: [ATE0..]
+I (5777) [PPPOS CLIENT]: Skip command: [AT+CFUN=1..]
+I (5777) [PPPOS CLIENT]: Skip command: [AT+CNMI=0,0,0,0,0..]
+I (5787) [PPPOS CLIENT]: Skip command: [AT+CPIN?..]
+I (5897) [PPPOS CLIENT]: AT COMMAND: [AT+CREG?..]
+I (5917) [PPPOS CLIENT]: AT BAD RESPONSE: [..+CREG: 0,2....OK..]
+W (5917) [PPPOS CLIENT]: Wrong response, restarting...
+I (8917) [PPPOS CLIENT]: Skip command: [AT..]
+I (8917) [PPPOS CLIENT]: Skip command: [ATZ..]
+I (8917) [PPPOS CLIENT]: Skip command: [ATE0..]
+I (8917) [PPPOS CLIENT]: Skip command: [AT+CFUN=1..]
+I (8917) [PPPOS CLIENT]: Skip command: [AT+CNMI=0,0,0,0,0..]
+I (8927) [PPPOS CLIENT]: Skip command: [AT+CPIN?..]
+I (9037) [PPPOS CLIENT]: AT COMMAND: [AT+CREG?..]
+I (9057) [PPPOS CLIENT]: AT RESPONSE: [..+CREG: 0,1....OK..]
+I (19157) [PPPOS CLIENT]: AT COMMAND: [AT+CGDCONT=1,"IP","internet.ht.hr"..]
+I (19177) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (19277) [PPPOS CLIENT]: AT COMMAND: [AT+CGDATA="PPP",1..]
+I (19297) [PPPOS CLIENT]: AT RESPONSE: [..CONNECT..]
+I (20297) [PPPOS CLIENT]: GSM initialized.
+I (21077) [PPPOS CLIENT]: status_cb: Connected
+I (21077) [PPPOS CLIENT]:    ipaddr    = 10.229.68.97
+I (21077) [PPPOS CLIENT]:    gateway   = 10.64.64.64
+I (21077) [PPPOS CLIENT]:    netmask   = 255.255.255.255
+I (21087) [PPPOS CLIENT]:    ip6addr   = ::
 
-I (9200) [PPPOS CLIENT]: ATE0
-I (9700) [PPPOS CLIENT]: 
-OK
+I (21087) [SNTP]: OBTAINING TIME
+I (21097) [SNTP]: Initializing SNTP
+I (21107) [SNTP]: SNTP INITIALIZED
+I (21107) [SNTP]: Waiting for system time to be set... (1/10)
+I (23107) [SNTP]: TIME SET TO Mon Jun 19 09:30:55 2017
 
-I (9700) [PPPOS CLIENT]: AT+CPIN?
-I (10200) [PPPOS CLIENT]: 
-+CPIN: READY
+I (23117) [HTTP]: ===== HTTP GET REQUEST =========================================
 
-OK
+I (23497) [HTTP]: DNS lookup succeeded. IP=82.196.4.208
+I (23497) [HTTP]: ... allocated socket
 
-I (10200) [PPPOS CLIENT]: AT+CGDCONT=1,"IP","web.htgprs"
-I (10700) [PPPOS CLIENT]: 
-OK
-
-I (10700) [PPPOS CLIENT]: ATDT*99***1#
-I (11200) [PPPOS CLIENT]: 
-CONNECT
-
-I (11200) [PPPOS CLIENT]: Gsm init end
-I (11200) [PPPOS CLIENT]: After pppapi_pppos_create
-I (11200) [PPPOS CLIENT]: After pppapi_set_default
-I (11200) [PPPOS CLIENT]: After pppapi_set_auth
-I (11210) [PPPOS CLIENT]: After pppapi_connect, waiting
-I (11870) [PPPOS CLIENT]: status_cb: Connected
-
-I (11870) [PPPOS CLIENT]:    our_ipaddr  = 10.208.72.198
-
-I (11870) [PPPOS CLIENT]:    his_ipaddr  = 10.64.64.64
-
-I (11870) [PPPOS CLIENT]:    netmask     = 255.255.255.255
-
-I (11880) [PPPOS CLIENT]:    our6_ipaddr = ::
-
-I (12780) [SNTP]: OBTAINING TIME
-I (12780) [SNTP]: Initializing SNTP
-I (12780) [SNTP]: SNTP INITIALIZED
-I (12780) [SNTP]: Waiting for system time to be set... (1/10)
-I (14780) [SNTP]: TIME SET TO Mon Mar 20 15:54:08 2017
-
-I (14780) [HTTP]: ===== HTTP GET REQUEST =========================================
-
-I (15120) [HTTP]: DNS lookup succeeded. IP=82.196.4.208
-I (15120) [HTTP]: ... allocated socket
-
-I (15340) [HTTP]: ... connected
-I (15340) [HTTP]: ... socket send success
-I (15340) [HTTP]: ... reading HTTP response...
+I (23787) [HTTP]: ... connected
+I (23797) [HTTP]: ... socket send success
+I (23797) [HTTP]: ... reading HTTP response...
 Header:
 -------
 HTTP/1.1 200 OK
-Date: Mon, 20 Mar 2017 15:54:10 GMT
+Date: Mon, 19 Jun 2017 09:30:57 GMT
 Server: Apache/2.4.7 (Ubuntu)
 Last-Modified: Sat, 18 Mar 2017 17:32:44 GMT
 ETag: "149-54b04ae918eb8"
@@ -96,29 +160,73 @@ and is manufactured by TSMC using their 40 nm process.
 2017 LoBo
 
 -----
-I (21280) [HTTP]: ... done reading from socket. 581 bytes read, 581 in buffer, errno=22
-
-I (21290) [HTTP]: Waiting 30 sec...
-I (21290) [HTTP]: ================================================================
+I (29267) [HTTP]: ... done reading from socket. 581 bytes read, 581 in buffer, errno=22
 
 
-I (21300) [HTTPS]: Seeding the random number generator
-I (21310) [HTTPS]: Loading the CA root certificate...
-I (21320) [HTTPS]: Setting hostname for TLS session...
-I (21320) [HTTPS]: Setting up the SSL/TLS structure...
-I (22330) [HTTPS]: ===== HTTPS GET REQUEST =========================================
+I (31317) [PPPOS CLIENT]: Disconnect requested.
+W (31347) [PPPOS CLIENT]: status_cb: User interrupt (disconnected)
+I (32447) [PPPOS CLIENT]: AT COMMAND: [AT..]
+I (32467) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (32567) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=4..]
+I (35057) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (35057) [PPPOS CLIENT]: Disconnected.
+I (35127) [HTTP]: Waiting 300 sec...
+I (35127) [HTTP]: ================================================================
 
-I (22330) [HTTPS]: Connecting to www.howsmyssl.com:443...
-I (22940) [HTTPS]: Connected.
-I (22940) [HTTPS]: Performing the SSL/TLS handshake...
-I (25400) [HTTPS]: Verifying peer X.509 certificate...
-W (25400) [HTTPS]: Failed to verify peer certificate!
-W (25400) [HTTPS]: verification info:   ! The certificate Common Name (CN) does not match with the expected CN
 
-I (25410) [HTTPS]: Writing HTTP request...
-I (25410) [HTTPS]: 102 bytes written
-I (25420) [HTTPS]: Reading HTTP response...
-I (26930) [HTTPS]: 5524 bytes read, 5524 in buffer
+I (35127) [HTTPS]: Seeding the random number generator
+I (35127) [HTTPS]: Loading the CA root certificate...
+I (35137) [HTTPS]: Setting hostname for TLS session...
+I (35137) [HTTPS]: Setting up the SSL/TLS structure...
+
+I (35157) [PPPOS CLIENT]: Reconnect requested.
+I (35157) [PPPOS CLIENT]: GSM initialization start
+I (35757) [PPPOS CLIENT]: AT COMMAND: [AT..]
+I (35777) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (35877) [PPPOS CLIENT]: AT COMMAND: [ATZ..]
+I (35897) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (35997) [PPPOS CLIENT]: AT COMMAND: [ATE0..]
+I (36017) [PPPOS CLIENT]: AT RESPONSE: [ATE0...OK..]
+I (36117) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=1..]
+I (36137) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (37237) [PPPOS CLIENT]: AT COMMAND: [AT+CNMI=0,0,0,0,0..]
+I (37257) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (37357) [PPPOS CLIENT]: AT COMMAND: [AT+CPIN?..]
+I (37377) [PPPOS CLIENT]: AT RESPONSE: [..+CPIN: READY....OK..]
+I (37477) [PPPOS CLIENT]: AT COMMAND: [AT+CREG?..]
+I (37497) [PPPOS CLIENT]: AT BAD RESPONSE: [..+CREG: 0,2....OK..]
+W (37497) [PPPOS CLIENT]: Wrong response, restarting...
+I (40497) [PPPOS CLIENT]: Skip command: [AT..]
+I (40497) [PPPOS CLIENT]: Skip command: [ATZ..]
+I (40497) [PPPOS CLIENT]: Skip command: [ATE0..]
+I (40497) [PPPOS CLIENT]: Skip command: [AT+CFUN=1..]
+I (40507) [PPPOS CLIENT]: Skip command: [AT+CNMI=0,0,0,0,0..]
+I (40507) [PPPOS CLIENT]: Skip command: [AT+CPIN?..]
+I (40617) [PPPOS CLIENT]: AT COMMAND: [AT+CREG?..]
+I (40637) [PPPOS CLIENT]: AT RESPONSE: [..+CREG: 0,1....OK..]
+I (40737) [PPPOS CLIENT]: AT COMMAND: [AT+CGDCONT=1,"IP","internet.ht.hr"..]
+I (40757) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (40857) [PPPOS CLIENT]: AT COMMAND: [AT+CGDATA="PPP",1..]
+I (40877) [PPPOS CLIENT]: AT RESPONSE: [..CONNECT..]
+I (41877) [PPPOS CLIENT]: GSM initialized.
+I (42917) [PPPOS CLIENT]: status_cb: Connected
+I (42917) [PPPOS CLIENT]:    ipaddr    = 10.226.211.69
+I (42917) [PPPOS CLIENT]:    gateway   = 10.64.64.64
+I (42917) [PPPOS CLIENT]:    netmask   = 255.255.255.255
+I (42927) [PPPOS CLIENT]:    ip6addr   = ::
+I (42937) [HTTPS]: ===== HTTPS GET REQUEST =========================================
+
+I (42937) [HTTPS]: Connecting to www.howsmyssl.com:443...
+I (43787) [HTTPS]: Connected.
+I (43787) [HTTPS]: Performing the SSL/TLS handshake...
+I (46807) [HTTPS]: Verifying peer X.509 certificate...
+W (46807) [HTTPS]: Failed to verify peer certificate!
+W (46807) [HTTPS]: verification info:   ! The certificate Common Name (CN) does not match with the expected CN
+
+I (46817) [HTTPS]: Writing HTTP request...
+I (46827) [HTTPS]: 102 bytes written
+I (46827) [HTTPS]: Reading HTTP response...
+I (48007) [HTTPS]: 5524 bytes read, 5524 in buffer
 Header:
 -------
 HTTP/1.1 200 OK
@@ -126,11 +234,11 @@ Content-Length: 5289
 Access-Control-Allow-Origin: *
 Connection: close
 Content-Type: application/json
-Date: Mon, 20 Mar 2017 15:54:19 GMT
+Date: Mon, 19 Jun 2017 09:31:19 GMT
 Strict-Transport-Security: max-age=631138519; includeSubdomains; preload
 -------
-I (26950) [HTTPS]: JSON data received.
-I (26950) [HTTPS]: parsing JSON data:
+I (48027) [HTTPS]: JSON data received.
+I (48037) [HTTPS]: parsing JSON data:
 given_cipher_suites = [Array] of 131 items
    TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
@@ -145,6 +253,43 @@ able_to_detect_n_minus_one_splitting = False
 insecure_cipher_suites = {Object}
 tls_version = TLS 1.2
 rating = Probably Okay
-I (27000) [HTTPS]: Waiting 30 sec...
-I (27000) [HTTPS]: =================================================================
+
+I (50087) [PPPOS CLIENT]: Disconnect requested.
+W (50117) [PPPOS CLIENT]: status_cb: User interrupt (disconnected)
+I (51217) [PPPOS CLIENT]: AT COMMAND: [AT..]
+I (51237) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (51337) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=4..]
+I (53797) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (53797) [PPPOS CLIENT]: Disconnected.
+I (53797) [HTTPS]: Waiting 300 sec...
+I (53797) [HTTPS]: =================================================================
+
+
+I (53807) [SMS]: ===== SMS TEST =================================================
+
+I (53917) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (56117) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=1..]
+I (56137) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (58237) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (58257) [PPPOS CLIENT]: AT RESPONSE: [..+CFUN: 1....OK..]
+I (58357) [PPPOS CLIENT]: AT COMMAND: [AT+CMGF=1..]
+I (58377) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (58477) [PPPOS CLIENT]: AT COMMAND: [AT+CMGS="+385992382166"..]
+I (58497) [PPPOS CLIENT]: AT RESPONSE: [..> ]
+I (58597) [PPPOS CLIENT]: AT COMMAND: [Hi from ESP32 via GSM.This is the test message..]
+I (65617) [PPPOS CLIENT]: AT RESPONSE: [..+CMGS: 35....OK..]
+SMS sent successfully
+I (65717) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (65737) [PPPOS CLIENT]: AT RESPONSE: [..+CFUN: 1....OK..]
+I (65837) [PPPOS CLIENT]: AT COMMAND: [AT+CMGF=1..]
+I (65857) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (65957) [PPPOS CLIENT]: AT COMMAND: [AT+CMGL="ALL"..]
+
+No messages
+I (68157) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (70357) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=4..]
+I (74097) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (74097) [SMS]: Waiting 300 sec...
+I (74097) [SMS]: ================================================================
+
 ```
