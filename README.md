@@ -274,7 +274,7 @@ I (58237) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
 I (58257) [PPPOS CLIENT]: AT RESPONSE: [..+CFUN: 1....OK..]
 I (58357) [PPPOS CLIENT]: AT COMMAND: [AT+CMGF=1..]
 I (58377) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
-I (58477) [PPPOS CLIENT]: AT COMMAND: [AT+CMGS="+385992382166"..]
+I (58477) [PPPOS CLIENT]: AT COMMAND: [AT+CMGS="+38599xxxxxxx"..]
 I (58497) [PPPOS CLIENT]: AT RESPONSE: [..> ]
 I (58597) [PPPOS CLIENT]: AT COMMAND: [Hi from ESP32 via GSM.This is the test message..]
 I (65617) [PPPOS CLIENT]: AT RESPONSE: [..+CMGS: 35....OK..]
@@ -291,5 +291,52 @@ I (70357) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=4..]
 I (74097) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
 I (74097) [SMS]: Waiting 300 sec...
 I (74097) [SMS]: ================================================================
+
+.
+.
+.
+
+I (4238867) [SMS]: ===== SMS TEST =================================================
+
+I (4238977) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (4241177) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=1..]
+I (4241197) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (4243297) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (4243317) [PPPOS CLIENT]: AT RESPONSE: [..+CFUN: 1....OK..]
+I (4243417) [PPPOS CLIENT]: AT COMMAND: [AT+CMGF=1..]
+I (4243437) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (4243537) [PPPOS CLIENT]: AT COMMAND: [AT+CMGL="ALL"..]
+
+Received messages: 1
+-------------------------------------------
+Message #1: idx=1, from: +38599xxxxxxx, status: REC UNREAD, time: 17/06/19,12:37:52+08, tz=GMT+2, timestamp: Wed Jul 19 12:37:52 2017
+
+Text: [
+Esp32 info, send me a reply
+]
+
+I (4245807) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (4245827) [PPPOS CLIENT]: AT RESPONSE: [..+CFUN: 1....OK..]
+I (4245927) [PPPOS CLIENT]: AT COMMAND: [AT+CMGF=1..]
+I (4245947) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (4246047) [PPPOS CLIENT]: AT COMMAND: [AT+CMGS="+38599xxxxxxx"..]
+I (4246067) [PPPOS CLIENT]: AT RESPONSE: [..> ]
+I (4246167) [PPPOS CLIENT]: AT COMMAND: [Hi, +38599xxxxxxx.My time is now.06/19/17 10:41:17.]
+I (4250777) [PPPOS CLIENT]: AT RESPONSE: [..+CMGS: 38....OK..]
+Response sent successfully
+Delete message at index 1
+I (4250877) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (4250897) [PPPOS CLIENT]: AT RESPONSE: [..+CFUN: 1....OK..]
+I (4250997) [PPPOS CLIENT]: AT COMMAND: [AT+CMGF=1..]
+I (4251017) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (4251117) [PPPOS CLIENT]: AT COMMAND: [AT+CMGD=1..]
+I (4251227) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+Delete OK
+I (4251327) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN?..]
+I (4253527) [PPPOS CLIENT]: AT COMMAND: [AT+CFUN=4..]
+I (4254357) [PPPOS CLIENT]: AT RESPONSE: [..OK..]
+I (4254357) [SMS]: Waiting 300 sec...
+I (4254357) [SMS]: ================================================================
+
 
 ```
