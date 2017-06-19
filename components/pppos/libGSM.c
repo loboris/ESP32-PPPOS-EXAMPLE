@@ -703,7 +703,7 @@ static void pppos_client_task()
 
 exit:
 	if (data) free(data);  // free data buffer
-	ppp_free(ppp);
+	if (ppp) ppp_free(ppp);
 
 	xSemaphoreTake(pppos_mutex, PPPOSMUTEX_TIMEOUT);
 	pppos_task_started = 0;
