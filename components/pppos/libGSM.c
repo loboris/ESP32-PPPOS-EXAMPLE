@@ -139,7 +139,7 @@ static GSM_Cmd cmd_Reg =
 	.cmdSize = sizeof("AT+CREG?\r\n")-1,
 	.cmdResponseOnOk = "CREG: 0,1",
 	.timeoutMs = 3000,
-	.delayMs = 10000,
+	.delayMs = 2000,
 	.skip = 0,
 };
 
@@ -595,6 +595,7 @@ static void pppos_client_task()
 				#endif
 				break; // end task
 			}
+			//netif_set_default(&ppp_netif);
 		}
 		else xSemaphoreGive(pppos_mutex);
 

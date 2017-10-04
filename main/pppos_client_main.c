@@ -32,7 +32,6 @@
 #include "lwip/dns.h"
 #include "lwip/pppapi.h"
 
-
 #include "mbedtls/platform.h"
 #include "mbedtls/net.h"
 #include "mbedtls/esp_debug.h"
@@ -42,11 +41,19 @@
 #include "mbedtls/error.h"
 #include "mbedtls/certs.h"
 
+#include <esp_event.h>
+#include <esp_wifi.h>
+
 #include "apps/sntp/sntp.h"
 #include "cJSON.h"
 
 #include "libGSM.h"
 
+#ifdef CONFIG_GSM_USE_WIFI_AP
+#include "lwip/api.h"
+#include "lwip/err.h"
+#include "lwip/netdb.h"
+#endif
 
 #define EXAMPLE_TASK_PAUSE	300		// pause between task runs in seconds
 #define TASK_SEMAPHORE_WAIT 140000	// time to wait for mutex in miliseconds
@@ -56,7 +63,29 @@ QueueHandle_t http_mutex;
 static const char *TIME_TAG = "[SNTP]";
 static const char *HTTP_TAG = "[HTTP]";
 static const char *HTTPS_TAG = "[HTTPS]";
+
+#ifdef CONFIG_GSM_SEND_SMS
 static const char *SMS_TAG = "[SMS]";
+#endif
+
+#ifdef CONFIG_GSM_USE_WIFI_AP
+static const char *WEBSRV_TAG = "[WebServer]";
+const static char http_html_hdr[] = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
+const static char http_index_html[] = "<!DOCTYPE html>"
+                                     "<html>\n"
+                                     "<head>\n"
+                                     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+                                     "  <style type=\"text/css\">\n"
+                                     "    html, body, iframe { margin: 0; padding: 0; height: 100%; }\n"
+                                     "    iframe { display: block; width: 100%; border: none; }\n"
+                                     "  </style>\n"
+                                     "<title>HELLO ESP32</title>\n"
+                                     "</head>\n"
+                                     "<body>\n"
+                                     "<h1>Hello World, from ESP32!</h1>\n"
+                                     "</body>\n"
+                                     "</html>\n";
+#endif
 
 // ===============================================================================================
 // ==== Http/Https get requests ==================================================================
@@ -68,8 +97,8 @@ static const char *SMS_TAG = "[SMS]";
 #define WEB_URL "http://loboris.eu/ESP32/info.txt"
 
 #define SSL_WEB_SERVER "www.howsmyssl.com"
-#define SSL_WEB_PORT "443"
 #define SSL_WEB_URL "https://www.howsmyssl.com/a/check"
+#define SSL_WEB_PORT "443"
 
 static const char *REQUEST = "GET " WEB_URL " HTTP/1.1\n"
     "Host: "WEB_SERVER"\n"
@@ -94,10 +123,11 @@ static const char *SSL_REQUEST = "GET " SSL_WEB_URL " HTTP/1.1\n"
 extern const uint8_t server_root_cert_pem_start[] asm("_binary_server_root_cert_pem_start");
 extern const uint8_t server_root_cert_pem_end[]   asm("_binary_server_root_cert_pem_end");
 
-
+static int level = 0;
 //-----------------------------------
 static void parse_object(cJSON *item)
 {
+    ESP_LOGI(HTTPS_TAG, "JSON: level %d", level);
 	cJSON *subitem=item->child;
 	while (subitem)
 	{
@@ -107,7 +137,18 @@ static void parse_object(cJSON *item)
 		else if (subitem->type == cJSON_False) printf("False\r\n");
 		else if (subitem->type == cJSON_True) printf("True\r\n");
 		else if (subitem->type == cJSON_NULL) printf("NULL\r\n");
-		else if (subitem->type == cJSON_Object) printf("{Object}\r\n");
+		else if (subitem->type == cJSON_Object) {
+            printf("{Object}\r\n");
+            // handle subitem
+            if (subitem->child) {
+                cJSON *subitemData = cJSON_GetObjectItem(subitem,subitem->string);
+                if (subitemData) {
+                    level++;
+                    parse_object(subitemData);
+                    level--;
+                }
+            }
+        }
 		else if (subitem->type == cJSON_Array) {
 			int arr_count = cJSON_GetArraySize(subitem);
 			printf("[Array] of %d items\r\n", arr_count);
@@ -121,8 +162,6 @@ static void parse_object(cJSON *item)
 			if (arr_count > 3 ) printf("   + %d more...\r\n", arr_count-3);
 		}
 		else printf("[?]\r\n");
-		// handle subitem
-		if (subitem->child) parse_object(subitem->child);
 
 		subitem=subitem->next;
 	}
@@ -357,16 +396,20 @@ start:
 		}
 		if (json_ptr) {
 			ESP_LOGI(HTTPS_TAG, "JSON data received.");
+            //printf("JSON: [\n%s]\n", json_ptr);
+            //ToDo: Check json in latest esp-idf
 			cJSON *root = cJSON_Parse(json_ptr);
+			ESP_LOGI(HTTPS_TAG, "JSON string parsed.");
 			if (root) {
 				ESP_LOGI(HTTPS_TAG, "parsing JSON data:");
+                level = 1;
 				parse_object(root);
 				cJSON_Delete(root);
 			}
 		}
 
 		// We can disconnect from Internet now and turn off RF to save power
-		ppposDisconnect(0, 1);
+		//ppposDisconnect(0, 1);
 
 finished:
         ESP_LOGI(HTTPS_TAG, "Waiting %d sec...", EXAMPLE_TASK_PAUSE);
@@ -499,7 +542,7 @@ start:
         close(s);
 
         // We can disconnect from Internet now and turn off RF to save power
-		ppposDisconnect(0, 1);
+		//ppposDisconnect(0, 1);
 
 finished:
         ESP_LOGI(HTTP_TAG, "Waiting %d sec...", EXAMPLE_TASK_PAUSE);
@@ -510,6 +553,8 @@ finished:
         }
     }
 }
+
+#ifdef CONFIG_GSM_SEND_SMS
 
 //======================================
 static void sms_task(void *pvParameters)
@@ -541,7 +586,6 @@ start:
 		gsm_RFOn();  // Turn on RF if it was turned off
 		vTaskDelay(2000 / portTICK_RATE_MS);
 
-		#ifdef CONFIG_GSM_SEND_SMS
 		if (clock() > sms_time) {
 			if (smsSend(CONFIG_GSM_SMS_NUMBER, "Hi from ESP32 via GSM\rThis is the test message.") == 1) {
 				printf("SMS sent successfully\r\n");
@@ -551,7 +595,6 @@ start:
 			}
 			sms_time = clock() + CONFIG_GSM_SMS_INTERVAL; // next sms send time
 		}
-		#endif
 
 		smsRead(&messages, -1);
 		if (messages.nmsg) {
@@ -607,13 +650,131 @@ start:
         }
     }
 }
+#endif
 
+
+#ifdef CONFIG_GSM_USE_WIFI_AP
+
+// ==== WiFi handling & simple WebServer ====================================================
+
+// FreeRTOS event group to signal when we are connected & ready to make a request
+static EventGroupHandle_t wifi_event_group;
+
+// The event group allows multiple bits for each event,
+const int CONNECTED_BIT = BIT0;
+const int APSTARTED_BIT = BIT1;
+
+//-------------------------------------------------------------------
+esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
+    switch(event->event_id) {
+    case SYSTEM_EVENT_STA_START:
+        esp_wifi_connect();
+        break;
+    case SYSTEM_EVENT_STA_GOT_IP:
+        xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+        break;
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+        /* This is a workaround as ESP32 WiFi libs don't currently
+           auto-reassociate. */
+        esp_wifi_connect();
+        xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+        break;
+    case SYSTEM_EVENT_AP_START:
+        xEventGroupSetBits(wifi_event_group, APSTARTED_BIT);
+        ESP_LOGD(WEBSRV_TAG, "AP Started");
+        break;
+    case SYSTEM_EVENT_AP_STOP:
+        xEventGroupClearBits(wifi_event_group, APSTARTED_BIT);
+        ESP_LOGD(WEBSRV_TAG, "AP Stopped");
+        break;
+    case SYSTEM_EVENT_AP_STACONNECTED:
+        ESP_LOGD(WEBSRV_TAG, "station connected to access point. Connected stations:");
+        wifi_sta_list_t sta_list;
+        ESP_ERROR_CHECK( esp_wifi_ap_get_sta_list(&sta_list));
+        for(int i = 0; i < sta_list.num; i++) {
+            //Print the mac address of the connected station
+            wifi_sta_info_t sta = sta_list.sta[i];
+            ESP_LOGD(WEBSRV_TAG, "Station %d MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", i, sta.mac[0], sta.mac[1], sta.mac[2], sta.mac[3], sta.mac[4], sta.mac[5]);
+        }
+        break;
+    case SYSTEM_EVENT_AP_STADISCONNECTED:
+        ESP_LOGD(WEBSRV_TAG, "station disconnected from access point");
+        break;
+    default:
+        break;
+    }
+	return ESP_OK;
+}
+
+//-----------------------------------------------------------
+static void http_server_netconn_serve(struct netconn *conn) {
+
+	struct netbuf *inbuf;
+	char *buf;
+	u16_t buflen;
+	err_t err;
+
+	err = netconn_recv(conn, &inbuf);
+
+	if (err == ERR_OK) {
+	  
+		netbuf_data(inbuf, (void**)&buf, &buflen);
+		
+		// extract the first line, with the request
+		char *first_line = strtok(buf, "\n");
+		
+		if(first_line) {
+			// default page
+			if(strstr(first_line, "GET / ")) {
+				netconn_write(conn, http_html_hdr, sizeof(http_html_hdr) - 1, NETCONN_NOCOPY);
+				netconn_write(conn, http_index_html, sizeof(http_index_html) - 1, NETCONN_NOCOPY);
+		        ESP_LOGI(WEBSRV_TAG, "Got request from client");
+			}
+			else {
+		        ESP_LOGW(WEBSRV_TAG, "Unknown request type [%s]", first_line);
+			}
+		}
+		else {
+	        ESP_LOGE(WEBSRV_TAG, "Unknown request");
+		}
+	}
+	
+	// close the connection and free the buffer
+	netconn_close(conn);
+	netbuf_delete(inbuf);
+}
+
+//-------------------------------------------
+static void http_server(void *pvParameters) {
+	
+	struct netconn *conn, *newconn;
+	err_t err;
+	conn = netconn_new(NETCONN_TCP);
+	netconn_bind(conn, NULL, 80);
+	netconn_listen(conn);
+    ESP_LOGD(WEBSRV_TAG, "HTTP Server listening...");
+	do {
+		err = netconn_accept(conn, &newconn);
+	    ESP_LOGD(WEBSRV_TAG, "New client connected");
+		if (err == ERR_OK) {
+			http_server_netconn_serve(newconn);
+			netconn_delete(newconn);
+		}
+	} while(err == ERR_OK);
+	netconn_close(conn);
+	netconn_delete(conn);
+    ESP_LOGE(WEBSRV_TAG, "Netconn accept error, task halted!");
+}
+
+// ==========================================================================================
+
+#endif
 
 
 //=============
 void app_main()
 {
-	http_mutex = xSemaphoreCreateMutex();
+    http_mutex = xSemaphoreCreateMutex();
 
 	if (ppposInit() == 0) {
 		ESP_LOGE("PPPoS EXAMPLE", "ERROR: GSM not initialized, HALTED");
@@ -622,7 +783,51 @@ void app_main()
 		}
 	}
 
-	// Get time from NTP server
+	#ifdef CONFIG_GSM_USE_WIFI_AP
+
+	// ----- Set AP(STA)---------------------------------------------------
+	nvs_flash_init();
+	tcpip_adapter_init();
+	wifi_event_group = xEventGroupCreate();
+	ESP_ERROR_CHECK( esp_event_loop_init(esp32_wifi_eventHandler, NULL) );
+	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
+	ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
+	ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_AP) );
+	wifi_config_t apConfig = {
+	   .ap = {
+		  .ssid="ESP32_TESTAP",
+		  .ssid_len=0,
+		  .password="",
+		  .channel=0,
+		  .authmode=WIFI_AUTH_OPEN,
+		  .ssid_hidden=0,
+		  .max_connection=8,
+		  .beacon_interval=100
+	   },
+	};
+	ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_AP, &apConfig) );
+	/*
+	wifi_config_t staConfig = {
+	   .sta = {
+		   .ssid = "MySSID",
+		   .password = "MyPassword",
+	   }
+	};
+	ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &staConfig) );
+	*/
+	ESP_ERROR_CHECK( esp_wifi_start() );
+	// ---------------------------------------------------------------------
+
+	xEventGroupWaitBits(wifi_event_group, APSTARTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+		// start the HTTP Server task
+	xTaskCreate(&http_server, "http_server", 2048, NULL, 5, NULL);
+
+	#endif
+
+	vTaskDelay(1000 / portTICK_RATE_MS);
+
+	// ==== Get time from NTP server =====
 	time_t now = 0;
 	struct tm timeinfo = { 0 };
 	int retry = 0;
@@ -670,12 +875,15 @@ void app_main()
 		break;
 	}
 
-	// Create tasks
+	// ==== Create PPPoS tasks ====
     xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
     xTaskCreate(&https_get_task, "https_get_task", 16384, NULL, 4, NULL);
+	#ifdef CONFIG_GSM_SEND_SMS
+	// ==== Create SMS task ====
     xTaskCreate(&sms_task, "sms_task", 4096, NULL, 3, NULL);
-
-	while(1)
+    #endif
+    
+    while(1)
 	{
 		vTaskDelay(1000 / portTICK_RATE_MS);
 	}

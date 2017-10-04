@@ -1,6 +1,12 @@
 ### PPP over Serial (PPPoS) client example
 
-**As of Apr 24. 2017 PPPoS support is included in esp-idf**
+Tested with **esp-idf v2.1** and latest esp-idf master branch
+
+---
+
+If using with lasest esp-idf (e6afe28bafe5db5ab79fae213f2e8e1ccd9f937c or later) a patch for **components/lwip/core/ipv4/ipv4.c** is need.
+
+Use included **ip4.c.patch** to patch the file or copy **ip4.c.patched** to **components/lwip/core/ipv4/** as **ipv4.c**
 
 ---
 
@@ -22,16 +28,17 @@ Execute menuconfig and configure your Serial flash config and other settings. In
 
 Navigate to **GSM PPPoS configuration** and set GSM and example parameters:
 
-* **GSM_DEBUG** if set GSM AT commands and responses are printed
-* **GSM_TX** UART Tx pin, connected to GSM Module Rx pin.
-* **GSM_RX** UART Rx pin, connected to GSM Module Tx pin.
-* **GSM_BDRATE** UART baudrate to comunicate with GSM module
-* **GSM_INTERNET_USER** Network provider internet user.
-* **GSM_INTERNET_PASSWORD** Network provider internet password
-* **GSM_APN** Network provider's APN for internet access
-* **GSM_SEND_SMS** if set SMS messages will be sent during example run
-* **GSM_SMS_NUMBER** SMS number for sending messages, enter the number in international format (+123999876543)
-* **GSM_SMS_INTERVAL** Set SMS message interval in miliseconds
+* **Enable GSM debugging** if set GSM AT commands and responses are printed
+* **UART Output to GSM Module** UART Tx pin, connected to GSM Module Rx pin.
+* **UART Input from GSM Module** UART Rx pin, connected to GSM Module Tx pin.
+* **UART Baud rate** UART baudrate to comunicate with GSM module
+* **Internet User** Network provider internet user.
+* **Internet password** Network provider internet password
+* **Internet APN** Network provider's APN for internet access
+* **Start WiFi and AP** Enable WiFi, configure AP, start WebServer to test local WiFi and Internet over GSM/PPPoS connection
+* **Send SMS message** if set SMS messages will be sent during example run
+* **SMS number** SMS number for sending messages, enter the number in international format (+123999876543)
+* **SMS message interval** Set SMS message interval in miliseconds
 
 `make menuconfig`
 
@@ -51,12 +58,14 @@ If using higher speed 3G module, using hw flow controll is recomended. You can c
 #### The example runs as follows:
 
 1. Creates the **pppos client task** which initializes modem on UART port and handles lwip interaction
-2. When connection to the Internet is established, gets the current time using SNTP protocol
-3. Creates **http**, **https** and **sms** tasks synchronized with mutex
-4. **HTTP task** gets text file from server and displays the header and data
-5. **HTTPS task** gets ssl info from server and displays the header and received JSON data with info about used SSL
-6. **SMS task** sends SMS messages after defined interval has passed, checks and displays received messages. If received messages starts with **Esp32 info** sends the response message to senders number.
-7. The tasks repeats operation after interval defined in *pppos_client_main.c*
+2. If configured, starts WiFi, Access Point and WebServer
+3. When connection to the Internet is established, gets the current time using SNTP protocol
+4. Creates **http**, **https** and **sms** tasks synchronized with mutex
+5. **HTTP task** gets text file from server and displays the header and data
+6. **HTTPS task** gets ssl info from server and displays the header and received JSON data with info about used SSL
+7. **SMS task** sends SMS messages after defined interval has passed, checks and displays received messages. If received messages starts with **Esp32 info** sends the response message to senders number.
+8. The tasks repeats operation after interval defined in *pppos_client_main.c*
+9. If WiFi is configured, simple web page can be accessed on http://192.168.4.1
 
 
 #### Tested with GSM SIM800L, should also work with other SIMCOM & Telit GSM modules.
