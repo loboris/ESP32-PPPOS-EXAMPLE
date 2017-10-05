@@ -82,9 +82,7 @@ const static char http_index_html[] = "<!DOCTYPE html>"
                                      "<title>HELLO ESP32</title>\n"
                                      "</head>\n"
                                      "<body>\n"
-                                     "<h1>Hello World, from ESP32!</h1>\n"
-                                     "</body>\n"
-                                     "</html>\n";
+                                     "<h1>Hello World, from ESP32!</h1>\n";
 #endif
 
 // ===============================================================================================
@@ -100,15 +98,15 @@ const static char http_index_html[] = "<!DOCTYPE html>"
 #define SSL_WEB_URL "https://www.howsmyssl.com/a/check"
 #define SSL_WEB_PORT "443"
 
-static const char *REQUEST = "GET " WEB_URL " HTTP/1.1\n"
-    "Host: "WEB_SERVER"\n"
-    "User-Agent: esp-idf/1.0 esp32\n"
-    "\n";
+static const char *REQUEST = "GET " WEB_URL " HTTP/1.1\r\n"
+    "Host: "WEB_SERVER"\r\n"
+    "User-Agent: esp-idf/1.0 esp32\r\n"
+    "\r\n";
 
-static const char *SSL_REQUEST = "GET " SSL_WEB_URL " HTTP/1.1\n"
-    "Host: "SSL_WEB_SERVER"\n"
-    "User-Agent: esp-idf/1.0 esp32\n"
-    "\n";
+static const char *SSL_REQUEST = "GET " SSL_WEB_URL " HTTP/1.1\r\n"
+    "Host: "SSL_WEB_SERVER"\r\n"
+    "User-Agent: esp-idf/1.0 esp32\r\n"
+    "\r\n";
 
 /* Root cert for howsmyssl.com, taken from server_root_cert.pem
 
@@ -513,30 +511,54 @@ start:
         ESP_LOGI(HTTP_TAG, "... socket send success");
         ESP_LOGI(HTTP_TAG, "... reading HTTP response...");
 
+        memset(buffer, 0, 2048);
         /* Read HTTP response */
-		int opt = 500;
-		int first_block = 1;
-		rlen = 0;
-		totlen = 0;
+        int opt = 500;
+        int first_block = 1;
+        char *cont_len = NULL;
+        int clen = 0;
+        rlen = 0;
+        totlen = 0;
+        char *hdr_end_ptr = NULL;
         do {
             bzero(recv_buf, sizeof(recv_buf));
             r = read(s, recv_buf, sizeof(recv_buf)-1);
-			totlen += r;
-			if ((rlen + r) < 2048) {
-				memcpy(buffer+rlen, recv_buf, r);
-				rlen += r;
-			}
-			if (first_block) {
-				lwip_setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &opt, sizeof(int));
-			}
+            totlen += r;
+            if ((rlen + r) < 2048) {
+                memcpy(buffer+rlen, recv_buf, r);
+                rlen += r;
+                buffer[rlen] = '\0';
+                if (clen == 0) {
+                    cont_len = strstr(buffer, "Content-Length: ");
+                    if (cont_len) {
+                        cont_len += 16;
+                        if (strstr(cont_len, "\r\n")) {
+                            char slen[16] = {0};
+                            memcpy(slen, cont_len, strstr(cont_len, "\r\n")-cont_len);
+                            clen = atoi(slen);
+                        }
+                    }
+                }
+                if (hdr_end_ptr == NULL) {
+                    hdr_end_ptr = strstr(buffer, "\r\n\r\n");
+                    if (hdr_end_ptr) {
+                        *hdr_end_ptr = '\0';
+                        hdr_end_ptr += 4;
+                    }
+                }
+                else if (clen > 0) {
+                    if (strlen(hdr_end_ptr) >= clen) break; 
+                }
+            }
+            if (first_block) {
+                lwip_setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &opt, sizeof(int));
+                first_block = 0;
+            }
         } while(r > 0);
 
-        buffer[rlen] = '\0';
-        char *hdr_end_ptr = strstr(buffer, "\r\n\r\n");
 		if (hdr_end_ptr) {
-			*hdr_end_ptr = '\0';
 			printf("Header:\r\n-------\r\n%s\r\n-------\r\n", buffer);
-			printf("Data:\r\n-----\r\n%s\r\n-----\r\n", hdr_end_ptr+4);
+			printf("Data:\r\n-----\r\n%s\r\n-----\r\n", hdr_end_ptr);
 		}
         ESP_LOGI(HTTP_TAG, "... done reading from socket. %d bytes read, %d in buffer, errno=%d\r\n", totlen, rlen, errno);
         close(s);
@@ -706,42 +728,175 @@ esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 	return ESP_OK;
 }
 
+//-----------------------------------------------------
+static void http_get_fromInternet(struct netconn *conn)
+{
+    ESP_LOGD(WEBSRV_TAG, "Get data from Internet");
+	const struct addrinfo hints = {
+        .ai_family = AF_INET,
+        .ai_socktype = SOCK_STREAM,
+    };
+    struct addrinfo *res;
+    int s, r;
+    char recv_buf[128];
+    int rlen=0, totlen=0;
+    char *buffer = NULL;
+    char *hdr_end_ptr = NULL;
+
+    if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
+        ESP_LOGE(WEBSRV_TAG, "ERROR: CANNOT GET MUTEX");
+        return;
+    }
+
+    // ** We must be connected to Internet
+    if (ppposInit() == 0) {
+        ESP_LOGE(WEBSRV_TAG, "PPPoS not initialized");
+        xSemaphoreGive(http_mutex);
+        return;
+    }
+
+    int err = getaddrinfo(WEB_SERVER, "80", &hints, &res);
+    if(err != 0 || res == NULL) {
+        ESP_LOGE(WEBSRV_TAG, "DNS lookup failed err=%d res=%p", err, res);
+        xSemaphoreGive(http_mutex);
+        return;
+    }
+
+    s = socket(res->ai_family, res->ai_socktype, 0);
+    if (s < 0) {
+        ESP_LOGE(WEBSRV_TAG, "... Failed to allocate socket.");
+        freeaddrinfo(res);
+        xSemaphoreGive(http_mutex);
+        return;
+    }
+
+    if(connect(s, res->ai_addr, res->ai_addrlen) != 0) {
+        ESP_LOGE(WEBSRV_TAG, "... socket connect failed errno=%d", errno);
+        close(s);
+        freeaddrinfo(res);
+        xSemaphoreGive(http_mutex);
+        return;
+    }
+
+    freeaddrinfo(res);
+
+    if (write(s, REQUEST, strlen(REQUEST)) < 0) {
+        ESP_LOGE(WEBSRV_TAG, "... socket send failed");
+        close(s);
+        xSemaphoreGive(http_mutex);
+        return;
+    }
+
+    buffer = malloc(2048);
+    if (!buffer) {
+        ESP_LOGE(WEBSRV_TAG, "ERROR allocating receive buffer");
+        close(s);
+        buffer = NULL;
+        xSemaphoreGive(http_mutex);
+        return;
+    }
+    memset(buffer, 0, 2048);
+    /* Read HTTP response */
+    int opt = 500;
+    int first_block = 1;
+    char *cont_len = NULL;
+    int clen = 0;
+    rlen = 0;
+    totlen = 0;
+    do {
+        bzero(recv_buf, sizeof(recv_buf));
+        r = read(s, recv_buf, sizeof(recv_buf)-1);
+        totlen += r;
+        if ((rlen + r) < 2048) {
+            memcpy(buffer+rlen, recv_buf, r);
+            rlen += r;
+            buffer[rlen] = '\0';
+            if (clen == 0) {
+                cont_len = strstr(buffer, "Content-Length: ");
+                if (cont_len) {
+                    cont_len += 16;
+                    if (strstr(cont_len, "\r\n")) {
+                        char slen[16] = {0};
+                        memcpy(slen, cont_len, strstr(cont_len, "\r\n")-cont_len);
+                        clen = atoi(slen);
+                    }
+                }
+            }
+            if (hdr_end_ptr == NULL) {
+                hdr_end_ptr = strstr(buffer, "\r\n\r\n");
+                if (hdr_end_ptr) hdr_end_ptr += 4;
+            }
+            else if (clen > 0) {
+                if (strlen(hdr_end_ptr) >= clen) break; 
+            }
+        }
+        if (first_block) {
+            lwip_setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &opt, sizeof(int));
+            first_block = 0;
+        }
+    } while(r > 0);
+
+    close(s);
+    xSemaphoreGive(http_mutex);
+
+    if (hdr_end_ptr) {
+        ESP_LOGI(WEBSRV_TAG, "Received data: rlen=%d, total=%d, body=%d [%d]", rlen, totlen, strlen(hdr_end_ptr), clen);
+    }
+    else {
+        ESP_LOGE(WEBSRV_TAG, "No header end found, rlen=%d", rlen);
+        free(buffer);
+        buffer = NULL;
+        return;
+    }
+
+    netconn_write(conn, "<h4>Received via PPPoS:</h4>\r\n<pre><h5>", 39, NETCONN_NOCOPY);
+    netconn_write(conn, hdr_end_ptr, strlen(hdr_end_ptr), NETCONN_NOCOPY);
+    netconn_write(conn, "</h5></pre>\r\n", 13, NETCONN_NOCOPY);
+    free(buffer);
+    buffer = NULL;
+
+    return;
+}
+
+
 //-----------------------------------------------------------
 static void http_server_netconn_serve(struct netconn *conn) {
 
-	struct netbuf *inbuf;
-	char *buf;
-	u16_t buflen;
-	err_t err;
+    struct netbuf *inbuf;
+    char *buf;
+    u16_t buflen;
+    err_t err;
 
-	err = netconn_recv(conn, &inbuf);
+    err = netconn_recv(conn, &inbuf);
 
-	if (err == ERR_OK) {
-	  
-		netbuf_data(inbuf, (void**)&buf, &buflen);
-		
-		// extract the first line, with the request
-		char *first_line = strtok(buf, "\n");
-		
-		if(first_line) {
-			// default page
-			if(strstr(first_line, "GET / ")) {
-				netconn_write(conn, http_html_hdr, sizeof(http_html_hdr) - 1, NETCONN_NOCOPY);
-				netconn_write(conn, http_index_html, sizeof(http_index_html) - 1, NETCONN_NOCOPY);
-		        ESP_LOGI(WEBSRV_TAG, "Got request from client");
-			}
-			else {
-		        ESP_LOGW(WEBSRV_TAG, "Unknown request type [%s]", first_line);
-			}
-		}
-		else {
-	        ESP_LOGE(WEBSRV_TAG, "Unknown request");
-		}
-	}
-	
-	// close the connection and free the buffer
-	netconn_close(conn);
-	netbuf_delete(inbuf);
+    if (err == ERR_OK) {
+        
+        netbuf_data(inbuf, (void**)&buf, &buflen);
+        
+        // extract the first line, with the request
+        char *first_line = strtok(buf, "\n");
+        
+        if (first_line) {
+            // default page
+            if (strstr(first_line, "GET / ")) {
+                netconn_write(conn, http_html_hdr, sizeof(http_html_hdr) - 1, NETCONN_NOCOPY);
+                netconn_write(conn, http_index_html, sizeof(http_index_html) - 1, NETCONN_NOCOPY);
+                http_get_fromInternet(conn);
+                netconn_write(conn, "</body>\n</html>\n", 16, NETCONN_NOCOPY);
+                ESP_LOGI(WEBSRV_TAG, "Got request from client");
+            }
+            else {
+                ESP_LOGW(WEBSRV_TAG, "Unknown request type [%s]", first_line);
+            }
+        }
+        else {
+            ESP_LOGE(WEBSRV_TAG, "Unknown request");
+        }
+    }
+
+    // close the connection and free the buffer
+    netconn_close(conn);
+    netbuf_delete(inbuf);
 }
 
 //-------------------------------------------

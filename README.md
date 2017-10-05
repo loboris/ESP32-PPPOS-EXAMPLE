@@ -4,7 +4,7 @@ Tested with **esp-idf v2.1** and latest esp-idf master branch
 
 ---
 
-If using with lasest esp-idf (e6afe28bafe5db5ab79fae213f2e8e1ccd9f937c or later) a patch for **components/lwip/core/ipv4/ipv4.c** is need.
+If using with latest esp-idf (e6afe28bafe5db5ab79fae213f2e8e1ccd9f937c or later) a patch for **components/lwip/core/ipv4/ipv4.c** is need.
 
 Use included **ip4.c.patch** to patch the file or copy **ip4.c.patched** to **components/lwip/core/ipv4/** as **ipv4.c**
 
@@ -65,7 +65,7 @@ If using higher speed 3G module, using hw flow controll is recomended. You can c
 6. **HTTPS task** gets ssl info from server and displays the header and received JSON data with info about used SSL
 7. **SMS task** sends SMS messages after defined interval has passed, checks and displays received messages. If received messages starts with **Esp32 info** sends the response message to senders number.
 8. The tasks repeats operation after interval defined in *pppos_client_main.c*
-9. If WiFi is configured, simple web page can be accessed on http://192.168.4.1
+9. If WiFi is configured, simple web page can be accessed on *http://192.168.4.1*. Generated page includes includes the text received from internet via PPPoS.
 
 
 #### Tested with GSM SIM800L, should also work with other SIMCOM & Telit GSM modules.
