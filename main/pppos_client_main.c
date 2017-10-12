@@ -93,12 +93,18 @@ const static char http_index_html[] = "<!DOCTYPE html>"
 #define WEB_SERVER "loboris.eu"
 #define WEB_PORT 80
 #define WEB_URL "http://loboris.eu/ESP32/info.txt"
+#define WEB_URL1 "http://loboris.eu"
 
 #define SSL_WEB_SERVER "www.howsmyssl.com"
 #define SSL_WEB_URL "https://www.howsmyssl.com/a/check"
 #define SSL_WEB_PORT "443"
 
 static const char *REQUEST = "GET " WEB_URL " HTTP/1.1\r\n"
+    "Host: "WEB_SERVER"\r\n"
+    "User-Agent: esp-idf/1.0 esp32\r\n"
+    "\r\n";
+
+static const char *REQUEST1 = "GET " WEB_URL1 " HTTP/1.1\r\n"
     "Host: "WEB_SERVER"\r\n"
     "User-Agent: esp-idf/1.0 esp32\r\n"
     "\r\n";
@@ -279,6 +285,7 @@ start:
         if (ppposInit() == 0) goto finished;
 
         ESP_LOGI(HTTPS_TAG, "===== HTTPS GET REQUEST =========================================\n");
+		//netif_set_default(&ppp_netif);
 
         mbedtls_net_init(&server_fd);
 
@@ -464,6 +471,7 @@ start:
 
 		ESP_LOGI(HTTP_TAG, "===== HTTP GET REQUEST =========================================\n");
 
+		//netif_set_default(&ppp_netif);
         int err = getaddrinfo(WEB_SERVER, "80", &hints, &res);
 
         if(err != 0 || res == NULL) {
@@ -728,8 +736,8 @@ esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 	return ESP_OK;
 }
 
-//-----------------------------------------------------
-static void http_get_fromInternet(struct netconn *conn)
+//----------------------------------------------------------------------------------------
+static void http_get_fromInternet(struct netconn *conn, const char *request, uint8_t type)
 {
     ESP_LOGD(WEBSRV_TAG, "Get data from Internet");
 	const struct addrinfo hints = {
@@ -743,6 +751,9 @@ static void http_get_fromInternet(struct netconn *conn)
     char *buffer = NULL;
     char *hdr_end_ptr = NULL;
 
+    // =======================================================
+    // Other tasks may use PPPoS, wait until they are finished
+    // =======================================================
     if (!(xSemaphoreTake(http_mutex, TASK_SEMAPHORE_WAIT))) {
         ESP_LOGE(WEBSRV_TAG, "ERROR: CANNOT GET MUTEX");
         return;
@@ -762,6 +773,7 @@ static void http_get_fromInternet(struct netconn *conn)
         return;
     }
 
+    // Create socket and connect to http server
     s = socket(res->ai_family, res->ai_socktype, 0);
     if (s < 0) {
         ESP_LOGE(WEBSRV_TAG, "... Failed to allocate socket.");
@@ -780,13 +792,15 @@ static void http_get_fromInternet(struct netconn *conn)
 
     freeaddrinfo(res);
 
-    if (write(s, REQUEST, strlen(REQUEST)) < 0) {
+    // Send GET request
+    if (write(s, request, strlen(request)) < 0) {
         ESP_LOGE(WEBSRV_TAG, "... socket send failed");
         close(s);
         xSemaphoreGive(http_mutex);
         return;
     }
 
+    // Get the response to buffer
     buffer = malloc(2048);
     if (!buffer) {
         ESP_LOGE(WEBSRV_TAG, "ERROR allocating receive buffer");
@@ -839,6 +853,7 @@ static void http_get_fromInternet(struct netconn *conn)
     close(s);
     xSemaphoreGive(http_mutex);
 
+    // Send the response to the client connected via WiFi AP
     if (hdr_end_ptr) {
         ESP_LOGI(WEBSRV_TAG, "Received data: rlen=%d, total=%d, body=%d [%d]", rlen, totlen, strlen(hdr_end_ptr), clen);
     }
@@ -849,9 +864,9 @@ static void http_get_fromInternet(struct netconn *conn)
         return;
     }
 
-    netconn_write(conn, "<h4>Received via PPPoS:</h4>\r\n<pre><h5>", 39, NETCONN_NOCOPY);
+    if (type) netconn_write(conn, "<h4>Received via PPPoS:</h4>\r\n<pre><h5>", 39, NETCONN_NOCOPY);
     netconn_write(conn, hdr_end_ptr, strlen(hdr_end_ptr), NETCONN_NOCOPY);
-    netconn_write(conn, "</h5></pre>\r\n", 13, NETCONN_NOCOPY);
+    if (type) netconn_write(conn, "</h5></pre>\r\n", 13, NETCONN_NOCOPY);
     free(buffer);
     buffer = NULL;
 
@@ -881,9 +896,13 @@ static void http_server_netconn_serve(struct netconn *conn) {
             if (strstr(first_line, "GET / ")) {
                 netconn_write(conn, http_html_hdr, sizeof(http_html_hdr) - 1, NETCONN_NOCOPY);
                 netconn_write(conn, http_index_html, sizeof(http_index_html) - 1, NETCONN_NOCOPY);
-                http_get_fromInternet(conn);
+                http_get_fromInternet(conn, REQUEST, 1);
                 netconn_write(conn, "</body>\n</html>\n", 16, NETCONN_NOCOPY);
                 ESP_LOGI(WEBSRV_TAG, "Got request from client");
+            }
+            else if (strstr(first_line, "GET /test ")) {
+                http_get_fromInternet(conn, REQUEST1, 0);
+                ESP_LOGI(WEBSRV_TAG, "Got [test] request from client");
             }
             else {
                 ESP_LOGW(WEBSRV_TAG, "Unknown request type [%s]", first_line);
@@ -931,15 +950,7 @@ void app_main()
 {
     http_mutex = xSemaphoreCreateMutex();
 
-	if (ppposInit() == 0) {
-		ESP_LOGE("PPPoS EXAMPLE", "ERROR: GSM not initialized, HALTED");
-		while (1) {
-			vTaskDelay(1000 / portTICK_RATE_MS);
-		}
-	}
-
 	#ifdef CONFIG_GSM_USE_WIFI_AP
-
 	// ----- Set AP(STA)---------------------------------------------------
 	nvs_flash_init();
 	tcpip_adapter_init();
@@ -962,25 +973,31 @@ void app_main()
 	   },
 	};
 	ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_AP, &apConfig) );
-	/*
-	wifi_config_t staConfig = {
-	   .sta = {
-		   .ssid = "MySSID",
-		   .password = "MyPassword",
-	   }
-	};
-	ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &staConfig) );
-	*/
-	ESP_ERROR_CHECK( esp_wifi_start() );
+
+    //wifi_config_t staConfig = {
+	//   .sta = {
+	//	   .ssid = "MySSID",
+	//	   .password = "MyPassword",
+	//   }
+	//};
+	//ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &staConfig) );
+
+    ESP_ERROR_CHECK( esp_wifi_start() );
 	// ---------------------------------------------------------------------
 
 	xEventGroupWaitBits(wifi_event_group, APSTARTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 		// start the HTTP Server task
 	xTaskCreate(&http_server, "http_server", 2048, NULL, 5, NULL);
 
+	vTaskDelay(1000 / portTICK_RATE_MS);
 	#endif
 
-	vTaskDelay(1000 / portTICK_RATE_MS);
+	if (ppposInit() == 0) {
+		ESP_LOGE("PPPoS EXAMPLE", "ERROR: GSM not initialized, HALTED");
+		while (1) {
+			vTaskDelay(1000 / portTICK_RATE_MS);
+		}
+	}
 
 	// ==== Get time from NTP server =====
 	time_t now = 0;

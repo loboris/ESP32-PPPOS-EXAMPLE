@@ -4,9 +4,9 @@ Tested with **esp-idf v2.1** and latest esp-idf master branch
 
 ---
 
-If using with latest esp-idf (e6afe28bafe5db5ab79fae213f2e8e1ccd9f937c or later) a patch for **components/lwip/core/ipv4/ipv4.c** is need.
+If using with latest esp-idf (e6afe28bafe5db5ab79fae213f2e8e1ccd9f937c or later) a patch for **components/lwip/api/pppapi.c** is need.
 
-Use included **ip4.c.patch** to patch the file or copy **ip4.c.patched** to **components/lwip/core/ipv4/** as **ipv4.c**
+Use included **pppapi.c.patch** to patch the file or copy **pppapi.c.patched** to **components/lwip/api/** as **pppapi.c**
 
 ---
 

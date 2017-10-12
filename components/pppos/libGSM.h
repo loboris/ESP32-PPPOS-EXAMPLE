@@ -30,6 +30,8 @@ typedef struct
 	SMS_Msg	*messages;
 }SMS_Messages;
 
+extern struct netif ppp_netif;
+
 /*
  * Create GSM/PPPoS task if not already created
  * Initialize GSM and connect to Internet
