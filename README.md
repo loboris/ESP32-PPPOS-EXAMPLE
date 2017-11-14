@@ -8,6 +8,8 @@ If using with latest esp-idf (e6afe28bafe5db5ab79fae213f2e8e1ccd9f937c or later)
 
 Use included **pppapi.c.patch** to patch the file or copy **pppapi.c.patched** to **components/lwip/api/** as **pppapi.c**
 
+** This patch was merged into esp-idf on 14. Nov 2017**
+
 ---
 
 **Includes GSM library** *libGSM* **which handles all GSM and PPPoS operations***
