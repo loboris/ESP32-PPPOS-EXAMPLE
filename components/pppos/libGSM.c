@@ -66,8 +66,9 @@ static const char *TAG = "[PPPOS CLIENT]";
 typedef struct
 {
 	char		*cmd;
-	uint16_t	cmdSize;
-	char		*cmdResponseOnOk;
+	uint16_t	cmdSize;	
+	uint8_t		allowedvalidreposes;
+	char		*cmdResponseOnOk[2];
 	uint16_t	timeoutMs;
 	uint16_t	delayMs;
 	uint8_t		skip;
@@ -77,7 +78,9 @@ static GSM_Cmd cmd_AT =
 {
 	.cmd = "AT\r\n",
 	.cmdSize = sizeof("AT\r\n")-1,
-	.cmdResponseOnOk = GSM_OK_Str,
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = GSM_OK_Str,
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 300,
 	.delayMs = 0,
 	.skip = 0,
@@ -87,7 +90,9 @@ static GSM_Cmd cmd_NoSMSInd =
 {
 	.cmd = "AT+CNMI=0,0,0,0,0\r\n",
 	.cmdSize = sizeof("AT+CNMI=0,0,0,0,0\r\n")-1,
-	.cmdResponseOnOk = GSM_OK_Str,
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = GSM_OK_Str,
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 1000,
 	.delayMs = 0,
 	.skip = 0,
@@ -97,7 +102,9 @@ static GSM_Cmd cmd_Reset =
 {
 	.cmd = "ATZ\r\n",
 	.cmdSize = sizeof("ATZ\r\n")-1,
-	.cmdResponseOnOk = GSM_OK_Str,
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = GSM_OK_Str,
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 300,
 	.delayMs = 0,
 	.skip = 0,
@@ -107,7 +114,9 @@ static GSM_Cmd cmd_RFOn =
 {
 	.cmd = "AT+CFUN=1\r\n",
 	.cmdSize = sizeof("ATCFUN=1,0\r\n")-1,
-	.cmdResponseOnOk = GSM_OK_Str,
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = GSM_OK_Str,
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 10000,
 	.delayMs = 1000,
 	.skip = 0,
@@ -117,7 +126,9 @@ static GSM_Cmd cmd_EchoOff =
 {
 	.cmd = "ATE0\r\n",
 	.cmdSize = sizeof("ATE0\r\n")-1,
-	.cmdResponseOnOk = GSM_OK_Str,
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = GSM_OK_Str,
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 300,
 	.delayMs = 0,
 	.skip = 0,
@@ -127,7 +138,9 @@ static GSM_Cmd cmd_Pin =
 {
 	.cmd = "AT+CPIN?\r\n",
 	.cmdSize = sizeof("AT+CPIN?\r\n")-1,
-	.cmdResponseOnOk = "CPIN: READY",
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = "CPIN: READY",
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 5000,
 	.delayMs = 0,
 	.skip = 0,
@@ -137,7 +150,9 @@ static GSM_Cmd cmd_Reg =
 {
 	.cmd = "AT+CREG?\r\n",
 	.cmdSize = sizeof("AT+CREG?\r\n")-1,
-	.cmdResponseOnOk = "CREG: 0,1",
+	.allowedvalidreposes = 2,
+	.cmdResponseOnOk[0] = "CREG: 0,1",
+	.cmdResponseOnOk[1]	= "CREG: 0,5",
 	.timeoutMs = 3000,
 	.delayMs = 2000,
 	.skip = 0,
@@ -147,7 +162,9 @@ static GSM_Cmd cmd_APN =
 {
 	.cmd = NULL,
 	.cmdSize = 0,
-	.cmdResponseOnOk = GSM_OK_Str,
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = GSM_OK_Str,
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 8000,
 	.delayMs = 0,
 	.skip = 0,
@@ -159,7 +176,9 @@ static GSM_Cmd cmd_Connect =
 	.cmdSize = sizeof("AT+CGDATA=\"PPP\",1\r\n")-1,
 	//.cmd = "ATDT*99***1#\r\n",
 	//.cmdSize = sizeof("ATDT*99***1#\r\n")-1,
-	.cmdResponseOnOk = "CONNECT",
+	.allowedvalidreposes = 1,
+	.cmdResponseOnOk[0] = "CONNECT",
+	.cmdResponseOnOk[1]	= NULL,
 	.timeoutMs = 30000,
 	.delayMs = 1000,
 	.skip = 0,
@@ -324,7 +343,7 @@ static void infoCommand(char *cmd, int cmdSize, char *info)
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-static int atCmd_waitResponse(char * cmd, char *resp, char * resp1, int cmdSize, int timeout, char **response, int size)
+static int atCmd_waitResponse(char * cmd, uint8_t respsize, char **resp, char * resp1, int cmdSize, int timeout, char **response, int size)
 {
 	char sresp[256] = {'\0'};
 	char data[256] = {'\0'};
@@ -356,7 +375,7 @@ static int atCmd_waitResponse(char * cmd, char *resp, char * resp1, int cmdSize,
 			}
 			memcpy(pbuf+tot, data, len);
 			tot += len;
-			response[tot] = '\0';
+			pbuf[tot] = '\0';
 			len = uart_read_bytes(uart_num, (uint8_t*)data, 256, 100 / portTICK_RATE_MS);
 		}
 		*response = pbuf;
@@ -382,13 +401,18 @@ static int atCmd_waitResponse(char * cmd, char *resp, char * resp1, int cmdSize,
 		else {
 			if (tot > 0) {
 				// Check the response
-				if (strstr(sresp, resp) != NULL) {
-					#if GSM_DEBUG
-					ESP_LOGI(TAG,"AT RESPONSE: [%s]", sresp);
-					#endif
-					break;
+				bool respfound=0;
+				for(int i=0;i<respsize;i++)
+				{
+					if (strstr(sresp, resp[i]) != NULL) {
+						#if GSM_DEBUG
+						printf(TAG"AT RESPONSE: [%s]\n", sresp);
+						#endif
+						respfound=1;
+						break;
+					}
 				}
-				else {
+				if(!respfound) {
 					if (resp1 != NULL) {
 						if (strstr(sresp, resp1) != NULL) {
 							#if GSM_DEBUG
@@ -425,11 +449,11 @@ static int atCmd_waitResponse(char * cmd, char *resp, char * resp1, int cmdSize,
 //------------------------------------
 static void _disconnect(uint8_t rfOff)
 {
-	int res = atCmd_waitResponse("AT\r\n", GSM_OK_Str, NULL, 4, 1000, NULL, 0);
+	int res = atCmd_waitResponse("AT\r\n",1, &GSM_OK_Str, NULL, 4, 1000, NULL, 0);
 	if (res == 1) {
 		if (rfOff) {
 			cmd_Reg.timeoutMs = 10000;
-			res = atCmd_waitResponse("AT+CFUN=4\r\n", GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
+			res = atCmd_waitResponse("AT+CFUN=4\r\n", 1, &GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
 		}
 		return;
 	}
@@ -444,7 +468,7 @@ static void _disconnect(uint8_t rfOff)
 	vTaskDelay(1100 / portTICK_PERIOD_MS);
 
 	int n = 0;
-	res = atCmd_waitResponse("ATH\r\n", GSM_OK_Str, "NO CARRIER", 5, 3000, NULL, 0);
+	res = atCmd_waitResponse("ATH\r\n", 1, &GSM_OK_Str, "NO CARRIER", 5, 3000, NULL, 0);
 	while (res == 0) {
 		n++;
 		if (n > 10) {
@@ -459,12 +483,12 @@ static void _disconnect(uint8_t rfOff)
 			vTaskDelay(1000 / portTICK_PERIOD_MS);
 		}
 		vTaskDelay(100 / portTICK_PERIOD_MS);
-		res = atCmd_waitResponse("ATH\r\n", GSM_OK_Str, "NO CARRIER", 5, 3000, NULL, 0);
+		res = atCmd_waitResponse("ATH\r\n", 1, &GSM_OK_Str, "NO CARRIER", 5, 3000, NULL, 0);
 	}
 	vTaskDelay(100 / portTICK_PERIOD_MS);
 	if (rfOff) {
 		cmd_Reg.timeoutMs = 10000;
-		res = atCmd_waitResponse("AT+CFUN=4\r\n", GSM_OK_Str, NULL, 11, 3000, NULL, 0);
+		res = atCmd_waitResponse("AT+CFUN=4\r\n", 1, &GSM_OK_Str, NULL, 11, 3000, NULL, 0);
 	}
 	#if GSM_DEBUG
 	ESP_LOGI(TAG,"DISCONNECTED.");
@@ -554,6 +578,7 @@ static void pppos_client_task()
 				continue;
 			}
 			if (atCmd_waitResponse(GSM_Init[gsmCmdIter]->cmd,
+					GSM_Init[gsmCmdIter]->allowedvalidreposes,
 					GSM_Init[gsmCmdIter]->cmdResponseOnOk, NULL,
 					GSM_Init[gsmCmdIter]->cmdSize,
 					GSM_Init[gsmCmdIter]->timeoutMs, NULL, 0) == 0)
@@ -830,14 +855,14 @@ int gsm_RFOff()
 	uint8_t f = 1;
 	char buf[64] = {'\0'};
 	char *pbuf = buf;
-	int res = atCmd_waitResponse("AT+CFUN?\r\n", NULL, NULL, -1, 2000, &pbuf, 63);
+	int res = atCmd_waitResponse("AT+CFUN?\r\n", 0, NULL, NULL, -1, 2000, &pbuf, 63);
 	if (res > 0) {
 		if (strstr(buf, "+CFUN: 4")) f = 0;
 	}
 
 	if (f) {
 		cmd_Reg.timeoutMs = 500;
-		return atCmd_waitResponse("AT+CFUN=4\r\n", GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
+		return atCmd_waitResponse("AT+CFUN=4\r\n", 1 , &GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
 	}
 	return 1;
 }
@@ -854,14 +879,14 @@ int gsm_RFOn()
 	uint8_t f = 1;
 	char buf[64] = {'\0'};
 	char *pbuf = buf;
-	int res = atCmd_waitResponse("AT+CFUN?\r\n", NULL, NULL, -1, 2000, &pbuf, 63);
+	int res = atCmd_waitResponse("AT+CFUN?\r\n", 0, NULL, NULL, -1, 2000, &pbuf, 63);
 	if (res > 0) {
 		if (strstr(buf, "+CFUN: 1")) f = 0;
 	}
 
 	if (f) {
 		cmd_Reg.timeoutMs = 0;
-		return atCmd_waitResponse("AT+CFUN=1\r\n", GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
+		return atCmd_waitResponse("AT+CFUN=1\r\n", 1, &GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
 	}
 	return 1;
 }
@@ -870,11 +895,11 @@ int gsm_RFOn()
 static int sms_ready()
 {
 	if (ppposStatus() != GSM_STATE_IDLE) return 0;
-
-	int res = atCmd_waitResponse("AT+CFUN?\r\n", "+CFUN: 1", NULL, -1, 1000, NULL, 0);
+	char* resp="+CFUN: 1";
+	int res = atCmd_waitResponse("AT+CFUN?\r\n", 1, &resp, NULL, -1, 1000, NULL, 0);
 	if (res != 1) return 0;
 
-	res = atCmd_waitResponse("AT+CMGF=1\r\n", GSM_OK_Str, NULL, -1, 1000, NULL, 0);
+	res = atCmd_waitResponse("AT+CMGF=1\r\n", 1, &GSM_OK_Str, NULL, -1, 1000, NULL, 0);
 	if (res != 1) return 0;
 	return 1;
 }
@@ -888,9 +913,10 @@ int smsSend(char *smsnum, char *msg)
 	int len = strlen(msg);
 
 	sprintf(buf, "AT+CMGS=\"%s\"\r\n", smsnum);
-	int res = atCmd_waitResponse(buf, "> ", NULL, -1, 1000, NULL, 0);
+	char* resp="> ";
+	int res = atCmd_waitResponse(buf, 1, &resp, NULL, -1, 1000, NULL, 0);
 	if (res != 1) {
-		res = atCmd_waitResponse("\x1B", GSM_OK_Str, NULL, 1, 1000, NULL, 0);
+		res = atCmd_waitResponse("\x1B", 1, &GSM_OK_Str, NULL, 1, 1000, NULL, 0);
 		return 0;
 	}
 
@@ -898,9 +924,10 @@ int smsSend(char *smsnum, char *msg)
 	if (msgbuf == NULL) return 0;
 
 	sprintf(msgbuf, "%s\x1A", msg);
-	res = atCmd_waitResponse(msgbuf, "+CMGS: ", "ERROR", len+1, 40000, NULL, 0);
+	resp="+CMGS: ";
+	res = atCmd_waitResponse(msgbuf, 1, &resp, "ERROR", len+1, 40000, NULL, 0);
 	if (res != 1) {
-		res = atCmd_waitResponse("\x1B", GSM_OK_Str, NULL, 1, 1000, NULL, 0);
+		res = atCmd_waitResponse("\x1B", 1, &GSM_OK_Str, NULL, 1, 1000, NULL, 0);
 		res = 0;
 	}
 
@@ -1018,7 +1045,7 @@ void smsRead(SMS_Messages *SMSmesg, int sort)
 	char *rbuffer = malloc(size);
 	if (rbuffer == NULL) return;
 
-	int res = atCmd_waitResponse("AT+CMGL=\"ALL\"\r\n", NULL, NULL, -1, 2000, &rbuffer, size);
+	int res = atCmd_waitResponse("AT+CMGL=\"ALL\"\r\n", 0, NULL, NULL, -1, 2000, &rbuffer, size);
 	if (res <= 0) {
 		free(rbuffer);
 		return;
@@ -1104,6 +1131,6 @@ int smsDelete(int idx)
 	char buf[64];
 	sprintf(buf,"AT+CMGD=%d\r\n", idx);
 
-	return atCmd_waitResponse(buf, GSM_OK_Str, NULL, -1, 5000, NULL, 0);
+	return atCmd_waitResponse(buf, 1, &GSM_OK_Str, NULL, -1, 5000, NULL, 0);
 }
 
