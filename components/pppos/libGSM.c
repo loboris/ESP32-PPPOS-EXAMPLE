@@ -449,11 +449,12 @@ static int atCmd_waitResponse(char * cmd, uint8_t respsize, char **resp, char * 
 //------------------------------------
 static void _disconnect(uint8_t rfOff)
 {
-	int res = atCmd_waitResponse("AT\r\n",1, &GSM_OK_Str, NULL, 4, 1000, NULL, 0);
+	char *resp=GSM_OK_Str;
+	int res = atCmd_waitResponse("AT\r\n",1, &resp, NULL, 4, 1000, NULL, 0);
 	if (res == 1) {
 		if (rfOff) {
 			cmd_Reg.timeoutMs = 10000;
-			res = atCmd_waitResponse("AT+CFUN=4\r\n", 1, &GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
+			res = atCmd_waitResponse("AT+CFUN=4\r\n", 1, &resp, NULL, 11, 10000, NULL, 0); // disable RF function
 		}
 		return;
 	}
@@ -468,7 +469,7 @@ static void _disconnect(uint8_t rfOff)
 	vTaskDelay(1100 / portTICK_PERIOD_MS);
 
 	int n = 0;
-	res = atCmd_waitResponse("ATH\r\n", 1, &GSM_OK_Str, "NO CARRIER", 5, 3000, NULL, 0);
+	res = atCmd_waitResponse("ATH\r\n", 1, &resp, "NO CARRIER", 5, 3000, NULL, 0);
 	while (res == 0) {
 		n++;
 		if (n > 10) {
@@ -483,12 +484,12 @@ static void _disconnect(uint8_t rfOff)
 			vTaskDelay(1000 / portTICK_PERIOD_MS);
 		}
 		vTaskDelay(100 / portTICK_PERIOD_MS);
-		res = atCmd_waitResponse("ATH\r\n", 1, &GSM_OK_Str, "NO CARRIER", 5, 3000, NULL, 0);
+		res = atCmd_waitResponse("ATH\r\n", 1, &resp, "NO CARRIER", 5, 3000, NULL, 0);
 	}
 	vTaskDelay(100 / portTICK_PERIOD_MS);
 	if (rfOff) {
 		cmd_Reg.timeoutMs = 10000;
-		res = atCmd_waitResponse("AT+CFUN=4\r\n", 1, &GSM_OK_Str, NULL, 11, 3000, NULL, 0);
+		res = atCmd_waitResponse("AT+CFUN=4\r\n", 1, &resp, NULL, 11, 3000, NULL, 0);
 	}
 	#if GSM_DEBUG
 	ESP_LOGI(TAG,"DISCONNECTED.");
@@ -862,7 +863,8 @@ int gsm_RFOff()
 
 	if (f) {
 		cmd_Reg.timeoutMs = 500;
-		return atCmd_waitResponse("AT+CFUN=4\r\n", 1 , &GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
+		char *resp=GSM_OK_Str;
+		return atCmd_waitResponse("AT+CFUN=4\r\n", 1 , &resp, NULL, 11, 10000, NULL, 0); // disable RF function
 	}
 	return 1;
 }
@@ -886,7 +888,8 @@ int gsm_RFOn()
 
 	if (f) {
 		cmd_Reg.timeoutMs = 0;
-		return atCmd_waitResponse("AT+CFUN=1\r\n", 1, &GSM_OK_Str, NULL, 11, 10000, NULL, 0); // disable RF function
+		char *resp=GSM_OK_Str;
+		return atCmd_waitResponse("AT+CFUN=1\r\n", 1, &resp, NULL, 11, 10000, NULL, 0); // disable RF function
 	}
 	return 1;
 }
@@ -898,8 +901,9 @@ static int sms_ready()
 	char* resp="+CFUN: 1";
 	int res = atCmd_waitResponse("AT+CFUN?\r\n", 1, &resp, NULL, -1, 1000, NULL, 0);
 	if (res != 1) return 0;
-
-	res = atCmd_waitResponse("AT+CMGF=1\r\n", 1, &GSM_OK_Str, NULL, -1, 1000, NULL, 0);
+	
+	resp=GSM_OK_Str;
+	res = atCmd_waitResponse("AT+CMGF=1\r\n", 1, &resp, NULL, -1, 1000, NULL, 0);
 	if (res != 1) return 0;
 	return 1;
 }
@@ -916,7 +920,8 @@ int smsSend(char *smsnum, char *msg)
 	char* resp="> ";
 	int res = atCmd_waitResponse(buf, 1, &resp, NULL, -1, 1000, NULL, 0);
 	if (res != 1) {
-		res = atCmd_waitResponse("\x1B", 1, &GSM_OK_Str, NULL, 1, 1000, NULL, 0);
+		resp=GSM_OK_Str;
+		res = atCmd_waitResponse("\x1B", 1, &resp, NULL, 1, 1000, NULL, 0);
 		return 0;
 	}
 
@@ -927,7 +932,8 @@ int smsSend(char *smsnum, char *msg)
 	resp="+CMGS: ";
 	res = atCmd_waitResponse(msgbuf, 1, &resp, "ERROR", len+1, 40000, NULL, 0);
 	if (res != 1) {
-		res = atCmd_waitResponse("\x1B", 1, &GSM_OK_Str, NULL, 1, 1000, NULL, 0);
+		resp=GSM_OK_Str;
+		res = atCmd_waitResponse("\x1B", 1, &resp, NULL, 1, 1000, NULL, 0);
 		res = 0;
 	}
 
@@ -1131,6 +1137,7 @@ int smsDelete(int idx)
 	char buf[64];
 	sprintf(buf,"AT+CMGD=%d\r\n", idx);
 
-	return atCmd_waitResponse(buf, 1, &GSM_OK_Str, NULL, -1, 5000, NULL, 0);
+	char *resp=GSM_OK_Str;
+	return atCmd_waitResponse(buf, 1, &resp, NULL, -1, 5000, NULL, 0);
 }
 
